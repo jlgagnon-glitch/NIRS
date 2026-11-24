@@ -38,7 +38,7 @@ SHIFT_RANGE = (-2.0, 3.0)          # allowed offset (s) between marker and real 
 K_BOUNDS = (0.5, 2000.0)           # limits on the time constant k (s)
 USABLE_K = (5.0, 1990.0)           # k must fall in this range to be usable
 USABLE_R2 = 0.80                   # and R^2 must be at least this
-FITS = ["1-param", "2-param", "3-param"]
+FITS = ["1-param", "2-param", "3-param", "anchored"]
 SERIES = ["Series 1 (pre-exercise)", "Series 2 (post-exercise)"]
 
 
@@ -141,8 +141,9 @@ def model(t, end, delta, k):
     return end - delta * np.exp(-t / k)
 
 
-def fit_recovery(t, y, rest):
-    """1-, 2- and 3-parameter fits of y(t) = End - Delta*exp(-t/k)."""
+def fit_recovery(t, y, rest, anchor=None):
+    """1-, 2- and 3-parameter fits of y(t) = End - Delta*exp(-t/k), plus the anchored fit
+    (End = rest and the curve passes through the end-of-exercise mVO2 at time t_ex)."""
     lo, hi = K_BOUNDS
     delta0 = rest - y[0]
     tries = {
@@ -150,6 +151,9 @@ def fit_recovery(t, y, rest):
         "2-param": (lambda t, d, k: model(t, rest, d, k), [delta0, 20], ([-50, lo], [50, hi])),
         "3-param": (model, [y[-1], y[-1] - y[0], 15], ([-50, -50, lo], [50, 50, hi])),
     }
+    if anchor is not None:
+        t_ex, ex = anchor
+        tries["anchored"] = (lambda t, k: rest - (rest - ex) * np.exp(-(t - t_ex) / k), [20], (lo, hi))
     fits = {}
     for name, (func, p0, bounds) in tries.items():
         try:
@@ -160,6 +164,8 @@ def fit_recovery(t, y, rest):
             end, delta, k = rest, delta0, p[0]
         elif name == "2-param":
             end, delta, k = rest, p[0], p[1]
+        elif name == "anchored":
+            end, delta, k = rest, (rest - ex) * np.exp(t_ex / p[0]), p[0]
         else:
             end, delta, k = p
         resid = y - model(t, end, delta, k)
@@ -180,7 +186,9 @@ def analyze(t, o2, hhb, marks):
     step = step_size(thb)
     cuff1 = nearest_step(t, step, marks["occl1_start"], 2.0)[0]
     rest, _ = corrected_slope(t, o2, hhb, cuff1, cuff1 + REST_START, cuff1 + REST_END)
-    result = dict(rest=rest, cuff1=cuff1, series={})
+    cuff2 = nearest_step(t, step, marks["occl2_start"], 2.0)[0]
+    end_ex, _ = corrected_slope(t, o2, hhb, cuff2, cuff2 + SLOPE_START, cuff2 + CUFF_DELAY - SLOPE_TRIM)
+    result = dict(rest=rest, cuff1=cuff1, cuff2=cuff2, end_ex=end_ex, series={})
     for name, key in zip(SERIES, ["series1_start", "series2_start"]):
         shift, cuffs = locate_cuffs(t, step, marks[key])
         occ = []
@@ -190,8 +198,11 @@ def analyze(t, o2, hhb, marks):
         mids = np.array([(c["on"] + c["off"]) / 2 for c in occ])
         tt = mids - mids[0]
         y = np.array([c["slope"] for c in occ])
-        result["series"][name] = dict(shift=shift, occ=occ, t=tt, y=y,
-                                      fits=fit_recovery(tt, y, rest))
+        anchor = None
+        if name == SERIES[1]:   # release of the 2nd long cuff, on the same clock as tt
+            anchor = (occ[0]["on"] - CUFF_DELAY - mids[0], end_ex)
+        result["series"][name] = dict(shift=shift, occ=occ, t=tt, y=y, anchor=anchor,
+                                      fits=fit_recovery(tt, y, rest, anchor))
     return result
 
 
@@ -200,18 +211,20 @@ def plot_fits(sid, res, path):
     fig, axes = plt.subplots(1, 2, figsize=(14, 6), sharey=True)
     for ax, name in zip(axes, SERIES):
         s = res["series"][name]
-        tt = np.linspace(0, 52, 300)
+        tt = np.linspace(-10, 52, 300)
         ax.axhline(res["rest"], color="grey", ls=":", label="resting mVO2")
-        for fname, color in zip(FITS, ["tab:blue", "tab:orange", "tab:green"]):
+        for fname, color in zip(FITS, ["tab:blue", "tab:orange", "tab:green", "tab:purple"]):
             if fname in s["fits"]:
                 f = s["fits"][fname]
                 ax.plot(tt, model(tt, f["End"], f["Delta"], f["k"]), color=color,
                         label=f"{fname}: k = {f['k']:.1f} s, R² = {f['R2']:.2f}")
         ax.plot(s["t"], s["y"], "ko", label="mVO2 (slope of each 5-s cuff)")
+        if s["anchor"] is not None:
+            ax.plot(*s["anchor"], "D", color="tab:purple", label="end-of-exercise mVO2")
         ax.set_title(name)
         ax.set_xlabel("Time since first 5-s cuff (s)")
         ax.legend(fontsize=8)
-    ys = np.concatenate([res["series"][n]["y"] for n in SERIES] + [[res["rest"], 0]])
+    ys = np.concatenate([res["series"][n]["y"] for n in SERIES] + [[res["rest"], res["end_ex"], 0]])
     pad = 0.2 * (ys.max() - ys.min())
     axes[0].set_ylim(ys.min() - pad, ys.max() + 2 * pad)
     axes[0].set_ylabel("mVO2 (µM/s)")
@@ -270,6 +283,11 @@ def plot_signals(sid, t, o2, hhb, res, events, path):
 
 # ---------------------------------------------------------------- 8. Tables and report
 def write_tables(results, out):
+    with open(out / "subjects.csv", "w", newline="") as f:
+        w = csv.writer(f)
+        w.writerow(["subject", "excluded", "rest_mVO2", "end_exercise_mVO2", "note"])
+        for sid, res in results.items():
+            w.writerow([sid, res["excluded"], f"{res['rest']:.5f}", f"{res['end_ex']:.5f}", res["note"]])
     with open(out / "slopes.csv", "w", newline="") as f:
         w = csv.writer(f)
         w.writerow(["subject", "series", "cuff", "on_s", "off_s", "mVO2_uM_per_s", "r2"])
@@ -303,7 +321,7 @@ def write_report(results, out):
     body = ParagraphStyle("body", fontName="DejaVu", fontSize=9, leading=12)
     head = ParagraphStyle("head", fontName="DejaVu", fontSize=14, leading=18, spaceAfter=6)
     story = [Paragraph("NIRS mVO2 recovery analysis", head)]
-    rows = [["Subject", "Rest (µM/s)"] + [f"S2 {f} rate (R²)" for f in FITS] + ["Note"]]
+    rows = [["Subject", "Rest (µM/s)", "End-ex. (µM/s)"] + [f"S2 {f} rate (R²)" for f in FITS] + ["Note"]]
     for sid, res in results.items():
         s2 = res["series"][SERIES[1]]
         cells = []
@@ -314,9 +332,9 @@ def write_report(results, out):
             else:
                 ok = is_usable(fit, s2["y"]) and not res["excluded"]
                 cells.append(f"{fit['rate']:.2f} ({fit['R2']:.2f})" + ("" if ok else " *"))
-        rows.append([sid, f"{res['rest']:.4f}"] + cells + [res["note"]])
+        rows.append([sid, f"{res['rest']:.4f}", f"{res['end_ex']:.4f}"] + cells + [res["note"]])
     table = Table([[Paragraph(str(c), body) for c in r] for r in rows],
-                  colWidths=[0.7 * inch, 0.9 * inch] + [1.3 * inch] * 3 + [3.0 * inch])
+                  colWidths=[0.6 * inch, 0.8 * inch, 0.8 * inch] + [1.15 * inch] * 4 + [2.2 * inch])
     story += [table, Paragraph("* = not usable (k outside 5-1990 s, R² below 0.80, a negative slope, "
                                "or subject excluded). Rates are in 1/min.", body)]
     for fname in FITS:

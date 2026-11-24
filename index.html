@@ -110,7 +110,7 @@ const DEFAULTS = {
   usableKLo: 5.0, usableKHi: 1990.0, usableR2: 0.80,
   curvatureFlag: 0.1,
 };
-const FITS = ["1-param", "2-param", "3-param"];
+const FITS = ["1-param", "2-param", "3-param", "anchored"];
 const SERIES = ["Series 1 (pre-exercise)", "Series 2 (post-exercise)"];
 const MARK_KEYS = ["occl1_start", "series1_start", "occl2_start", "series2_start"];
 
@@ -352,7 +352,7 @@ function correctedSlope(D, on, t0, t1, S) {
 // ------------------------------------------------------------ exponential fits
 const model = (t, end, delta, k) => end - delta * Math.exp(-t / k);
 
-function fitRecovery(t, y, rest, S) {
+function fitRecovery(t, y, rest, S, anchor) {
   const n = t.length, lo = S.kLo, hi = S.kHi;
   if (n < 3) return {};
   const ymean = y.reduce((a, b) => a + b, 0) / n;
@@ -372,9 +372,12 @@ function fitRecovery(t, y, rest, S) {
                       if (end < -50 || end > 50) { end = clamp(end, -50, 50); delta = 0; for (let i = 0; i < n; i++) {} let num = 0; for (let i = 0; i < n; i++) { const e = Math.exp(-t[i] / k); num += e * (end - y[i]); } delta = clamp(num / see, -50, 50); }
                       else if (delta < -50 || delta > 50) { delta = clamp(delta, -50, 50); let s = 0; for (let i = 0; i < n; i++) s += y[i] + delta * Math.exp(-t[i] / k); end = clamp(s / n, -50, 50); }
                       return [end, delta]; },
+    // anchored: End = rest and the curve passes through the end-of-exercise value ex at time tEx
+    "anchored": k => [rest, (rest - anchor[1]) * Math.exp(anchor[0] / k)],
   };
   const out = {};
   for (const name of FITS) {
+    if (name === "anchored" && !anchor) continue;
     const sse = k => { const [e, d] = solvers[name](k); let s = 0; for (let i = 0; i < n; i++) s += (y[i] - model(t[i], e, d, k)) ** 2; return s; };
     // global search on a log grid of k, then golden-section refinement
     const N = 3000, L0 = Math.log(lo), L1 = Math.log(hi);
@@ -408,7 +411,11 @@ function analyze(D, marks, S, ov) {
   const cuff1 = ov.cuff1 != null ? ov.cuff1 : nearestStep(D.t, step, m.occl1_start, 2.0)[0];
   const rw = ov.rest || [cuff1 + S.restStart, cuff1 + S.restEnd];
   const rs = correctedSlope(D, cuff1, rw[0], rw[1], S);
-  const res = { marks: m, cuff1, restWin: rw, rest: rs.slope, restR2: rs.r2, series: {} };
+  const cuff2 = ov.cuff2 != null ? ov.cuff2 : nearestStep(D.t, step, m.occl2_start, 2.0)[0];
+  const ew = ov.endex || [cuff2 + S.slopeStart, cuff2 + S.cuffDelay - S.slopeTrim];
+  const es = correctedSlope(D, cuff2, ew[0], ew[1], S);
+  const res = { marks: m, cuff1, restWin: rw, rest: rs.slope, restR2: rs.r2,
+                cuff2, endExWin: ew, endEx: es.slope, endExR2: es.r2, series: {} };
   SERIES.forEach((name, si) => {
     const key = si === 0 ? "series1_start" : "series2_start";
     const auto = locateCuffs(D.t, step, m[key], S);
@@ -426,7 +433,8 @@ function analyze(D, marks, S, ov) {
     occ.forEach(c => c.t = (c.on + c.off) / 2 - mid0);
     const used = occ.filter(c => !c.excluded);
     const tt = used.map(c => c.t), y = used.map(c => c.slope);
-    res.series[name] = { shift: auto.shift, occ, t: tt, y, fits: fitRecovery(tt, y, rs.slope, S) };
+    const anchor = si === 1 ? [occ[0].on - S.cuffDelay - mid0, es.slope] : null;   // release of the 2nd long cuff
+    res.series[name] = { shift: auto.shift, occ, t: tt, y, anchor, fits: fitRecovery(tt, y, rs.slope, S, anchor) };
   });
   return res;
 }
@@ -458,8 +466,9 @@ if (typeof module !== "undefined" && module.exports) module.exports = API; else 
 (function () {
 "use strict";
 const N = window.NIRS, SERIES = N.SERIES, FITS = N.FITS, KEYS = N.MARK_KEYS;
-const FIT_COL = { "1-param": "#2a78d6", "2-param": "#e8681f", "3-param": "#16a34a" };
-const FIT_DASH = { "1-param": "", "2-param": "6 4", "3-param": "" };
+const FIT_COL = { "1-param": "#2a78d6", "2-param": "#e8681f", "3-param": "#16a34a", "anchored": "#7c3aed" };
+const FIT_DASH = { "1-param": "", "2-param": "6 4", "3-param": "", "anchored": "2 3" };
+const fitsFor = name => name === SERIES[0] ? FITS.filter(f => f !== "anchored") : FITS;
 const MARK_LABEL = { occl1_start: "5-min occlusion 1 start", series1_start: "Series 1 start (release)",
                      occl2_start: "5-min occlusion 2 start", series2_start: "Series 2 start (release)" };
 const STORE = "nirs-mvo2-session-v1";
@@ -539,7 +548,7 @@ function status(t) { $("#status").textContent = t; }
 
 // ------------------------------------------------------------ helpers
 function editsCount(s) {
-  const ov = s.ov || {}; let n = Object.keys(ov.marks || {}).length + (ov.rest ? 1 : 0);
+  const ov = s.ov || {}; let n = Object.keys(ov.marks || {}).length + (ov.rest ? 1 : 0) + (ov.endex ? 1 : 0);
   for (const nm in ov.series || {}) for (const i in (ov.series[nm].cuffs || {})) { const c = ov.series[nm].cuffs[i]; if (Object.keys(c).some(k => c[k] != null && c[k] !== false)) n++; }
   return n;
 }
@@ -633,20 +642,25 @@ function overviewPlot(s, interactive) {
   if (interactive) for (const k of KEYS) handle(P, m[k], k.startsWith("occl") ? "#2a78d6" : "#e8681f", MARK_LABEL[k], v => { s.ov.marks = s.ov.marks || {}; s.ov.marks[k] = v; compute(s.sid); persist(); render(); }, { width: 1.5 });
   return P.svg;
 }
-function restPlot(s, interactive) {
-  const D = s.D, r = s.res, c = r.cuff1, a = c - 10, b = c + 45;
+function windowPlot(s, kind, interactive) {
+  const D = s.D, r = s.res, isRest = kind === "rest";
+  const c = isRest ? r.cuff1 : r.cuff2, win = isRest ? r.restWin : r.endExWin;
+  const val = isRest ? r.rest : r.endEx, r2 = isRest ? r.restR2 : r.endExR2;
+  const a = c - 10, b = isRest ? c + 45 : c + 20;
   const i0 = N.lowerIdx(D.t, a), i1 = N.upperIdx(D.t, b);
   const { hc } = N.ryanRange(D, c - ST.S.refWindow, c, i0, i1);
   const xs = Array.from(D.t.subarray(i0, i1)), ys = Array.from(hc);
-  const P = frame({ w: 520, h: 210, xlim: [a, b], ylim: extent([ys]), title: `Resting mVO₂ = ${f(r.rest, 4)} µM/s (r² ${f(r.restR2, 2)})`, xlabel: "Time (s)", ylabel: "Corr. HHb (µM)" });
-  el("rect", { x: P.sx(r.restWin[0]), y: P.m.t, width: P.sx(r.restWin[1]) - P.sx(r.restWin[0]), height: P.H - P.m.t - P.m.b, fill: "#e8681f", opacity: 0.12 }, P.g);
+  const P = frame({ w: 520, h: 210, xlim: [a, b], ylim: extent([ys]), title: `${isRest ? "Resting" : "End-of-exercise"} mVO₂ = ${f(val, 4)} µM/s (r² ${f(r2, 2)})`, xlabel: "Time (s)", ylabel: "Corr. HHb (µM)" });
+  el("rect", { x: P.sx(win[0]), y: P.m.t, width: P.sx(win[1]) - P.sx(win[0]), height: P.H - P.m.t - P.m.b, fill: isRest ? "#e8681f" : "#7c3aed", opacity: 0.12 }, P.g);
   el("line", { x1: P.sx(c), x2: P.sx(c), y1: P.m.t, y2: P.H - P.m.b, stroke: "#8a877f", "stroke-dasharray": "4 3" }, P.g);
   polyline(P, xs, ys, { stroke: "#2a78d6", "stroke-width": 1.2 });
-  const w = xs.map((x, i) => [x, ys[i]]).filter(p => p[0] >= r.restWin[0] && p[0] <= r.restWin[1]);
-  if (w.length > 2) { const L = N.linfit(w.map(p => p[0]), w.map(p => p[1])); polyline(P, [r.restWin[0], r.restWin[1]], [L.m * r.restWin[0] + L.b, L.m * r.restWin[1] + L.b], { stroke: "#e8681f", "stroke-width": 2.5 }); }
+  const w = xs.map((x, i) => [x, ys[i]]).filter(p => p[0] >= win[0] && p[0] <= win[1]);
+  const col = isRest ? "#e8681f" : "#7c3aed";
+  if (w.length > 2) { const L = N.linfit(w.map(p => p[0]), w.map(p => p[1])); polyline(P, [win[0], win[1]], [L.m * win[0] + L.b, L.m * win[1] + L.b], { stroke: col, "stroke-width": 2.5 }); }
   if (interactive) {
-    handle(P, r.restWin[0], "#e8681f", "Resting window start", v => { s.ov.rest = [v, r.restWin[1]]; compute(s.sid); persist(); render(); }, { max: r.restWin[1] - 2 });
-    handle(P, r.restWin[1], "#e8681f", "Resting window end", v => { s.ov.rest = [r.restWin[0], v]; compute(s.sid); persist(); render(); }, { min: r.restWin[0] + 2 });
+    const key = isRest ? "rest" : "endex", minLen = isRest ? 2 : 1;
+    handle(P, win[0], col, "Window start", v => { s.ov[key] = [v, win[1]]; compute(s.sid); persist(); render(); }, { max: win[1] - minLen });
+    handle(P, win[1], col, "Window end", v => { s.ov[key] = [win[0], v]; compute(s.sid); persist(); render(); }, { min: win[0] + minLen });
   }
   return P.svg;
 }
@@ -692,28 +706,31 @@ function cuffPanel(s, name, i, interactive) {
 }
 function fitPlot(s, name) {
   const r = s.res, ser = r.series[name], occ = ser.occ;
-  const ally = occ.map(c => c.slope).concat([r.rest, 0]);
+  const ally = occ.map(c => c.slope).concat([r.rest, 0]).concat(ser.anchor ? [ser.anchor[1]] : []);
   const yl = extent([ally], 0.1); yl[1] += (yl[1] - yl[0]) * 0.35;
-  const P = frame({ w: 540, h: 290, xlim: [-2, 54], ylim: yl, title: name, xlabel: "Time since first 5-s cuff (s)", ylabel: "mVO₂ (µM/s)" });
+  const P = frame({ w: 540, h: 290, xlim: [-12, 54], ylim: yl, title: name, xlabel: "Time since first 5-s cuff (s)", ylabel: "mVO₂ (µM/s)" });
   el("line", { x1: P.m.l, x2: P.W - P.m.r, y1: P.sy(r.rest), y2: P.sy(r.rest), stroke: "#8a877f", "stroke-dasharray": "2 3" }, P.g);
   el("text", { x: P.W - P.m.r - 4, y: P.sy(r.rest) - 3, "text-anchor": "end", "font-size": 9, fill: "#8a877f" }, P.g, "resting mVO₂");
-  const tt = []; for (let k = 0; k <= 200; k++) tt.push(-2 + 56 * k / 200);
+  const tt = []; for (let k = 0; k <= 200; k++) tt.push(-10 + 62 * k / 200);
   let ly = 0;
-  for (const fn of FITS) {
+  for (const fn of fitsFor(name)) {
     const ft = ser.fits[fn]; if (!ft) continue;
-    polyline(P, tt, tt.map(x => N.model(Math.max(x, 0), ft.End, ft.Delta, ft.k)), { stroke: FIT_COL[fn], "stroke-width": 2, "stroke-dasharray": FIT_DASH[fn] });
+    polyline(P, tt, tt.map(x => N.model(x, ft.End, ft.Delta, ft.k)), { stroke: FIT_COL[fn], "stroke-width": 2, "stroke-dasharray": FIT_DASH[fn] });
     const unres = ft.k >= ST.S.usableKHi || ft.k < ST.S.usableKLo;
     const u = usable(s, name, fn);
     el("text", { x: P.W - P.m.r - 4, y: P.m.t + 12 + 13 * ly++, "text-anchor": "end", "font-size": 10, fill: FIT_COL[fn] }, P.svg,
        `${fn}: ${unres ? "k unresolved" : `k = ${f(ft.k, 1)} s, ${f(ft.rate, 2)} /min`}, R² ${f(ft.R2, 2)}${u ? " ✓" : ""}`);
   }
+  if (ser.anchor) { const ax = P.sx(ser.anchor[0]), ay = P.sy(ser.anchor[1]);
+    el("path", { d: `M${ax} ${ay - 7}L${ax + 7} ${ay}L${ax} ${ay + 7}L${ax - 7} ${ay}Z`, fill: "#7c3aed", stroke: "#fff", "stroke-width": 1.5 }, P.svg);
+    el("title", {}, P.svg.lastChild, "End-of-exercise mVO₂, placed at the release of the second long cuff"); }
   for (const c of occ) el("circle", { cx: P.sx(c.t), cy: P.sy(c.slope), r: 5, fill: c.excluded ? "#fff" : "#1d1c1a", stroke: c.excluded ? "#8a877f" : "#fff", "stroke-width": 1.5 }, P.svg);
   return P.svg;
 }
 function fitTable(s, name) {
   const ser = s.res.series[name];
   let h = `<table><tr><th>Fit</th><th>End (µM/s)</th><th>Delta</th><th>k (s)</th><th>Rate (/min)</th><th>R²</th><th>Usable</th></tr>`;
-  for (const fn of FITS) { const ft = ser.fits[fn]; if (!ft) { h += `<tr><td>${fn}</td><td colspan=6 class=muted>failed</td></tr>`; continue; }
+  for (const fn of fitsFor(name)) { const ft = ser.fits[fn]; if (!ft) { h += `<tr><td>${fn}</td><td colspan=6 class=muted>failed</td></tr>`; continue; }
     const u = usable(s, name, fn); const unres = ft.k >= ST.S.usableKHi || ft.k < ST.S.usableKLo;
     h += `<tr><td>${fn}</td><td class=num>${f(ft.End, 4)}</td><td class=num>${f(ft.Delta, 4)}</td><td class=num>${unres ? "limit/unres." : f(ft.k, 1)}</td><td class=num>${unres ? "–" : f(ft.rate, 2)}</td><td class=num>${f(ft.R2, 2)}</td><td class="${u ? "u" : "nu"}">${u ? "yes" : "no"}</td></tr>`; }
   const why = [];
@@ -753,8 +770,12 @@ function renderSubject() {
   ov.appendChild(overviewPlot(s, true)); M.appendChild(ov);
   const rc = document.createElement("div"); rc.className = "card";
   rc.innerHTML = `<h2>Resting mVO₂ (End for the 1- and 2-parameter fits)</h2><div class="help">Slope of corrected HHb in the orange window (default ${ST.S.restStart}–${ST.S.restEnd} s after the first long cuff goes on, at ${f(s.res.cuff1, 1)} s). Drag the orange handles to change it.${s.ov.rest ? ' <button class="small" id="rstRest">Reset window</button>' : ""}</div>`;
-  const rw = document.createElement("div"); rw.style.maxWidth = "560px"; rw.appendChild(restPlot(s, true)); rc.appendChild(rw); M.appendChild(rc);
+  const rw = document.createElement("div"); rw.style.maxWidth = "560px"; rw.appendChild(windowPlot(s, "rest", true)); rc.appendChild(rw); M.appendChild(rc);
   if (s.ov.rest) $("#rstRest").onclick = () => { delete s.ov.rest; compute(s.sid); persist(); render(); };
+  const ec = document.createElement("div"); ec.className = "card";
+  ec.innerHTML = `<h2>End-of-exercise mVO₂ (start point of the anchored fit)</h2><div class="help">Slope of corrected HHb in the purple window right after the second long cuff goes on at ${f(s.res.cuff2, 1)} s, as the hand grip stops (default ${ST.S.slopeStart}–${f(ST.S.cuffDelay - ST.S.slopeTrim, 1)} s after inflation, the same window as a 5-s cuff). Drag the purple handles to change it.${s.ov.endex ? ' <button class="small" id="rstEx">Reset window</button>' : ""}</div>`;
+  const ew = document.createElement("div"); ew.style.maxWidth = "560px"; ew.appendChild(windowPlot(s, "endex", true)); ec.appendChild(ew); M.appendChild(ec);
+  if (s.ov.endex) $("#rstEx").onclick = () => { delete s.ov.endex; compute(s.sid); persist(); render(); };
   for (const name of SERIES) {
     const card = document.createElement("div"); card.className = "card";
     const ser = s.res.series[name];
@@ -764,7 +785,7 @@ function renderSubject() {
     card.appendChild(g); M.appendChild(card);
   }
   const fc = document.createElement("div"); fc.className = "card";
-  fc.innerHTML = `<h2>Exponential fits: y(t) = End − Delta·e<sup>−t/k</sup>, rate = 60/k</h2><div class="legend"><span><i class="sw" style="background:${FIT_COL["1-param"]}"></i>1-param (End = rest, Delta from first point)</span><span><i class="sw" style="background:${FIT_COL["2-param"]}"></i>2-param (End = rest)</span><span><i class="sw" style="background:${FIT_COL["3-param"]}"></i>3-param (all free)</span><span>○ = excluded cuff</span></div>`;
+  fc.innerHTML = `<h2>Exponential fits: y(t) = End − Delta·e<sup>−t/k</sup>, rate = 60/k</h2><div class="legend"><span><i class="sw" style="background:${FIT_COL["1-param"]}"></i>1-param (End = rest, Delta from first point)</span><span><i class="sw" style="background:${FIT_COL["2-param"]}"></i>2-param (End = rest)</span><span><i class="sw" style="background:${FIT_COL["3-param"]}"></i>3-param (all free)</span><span><i class="sw" style="background:${FIT_COL["anchored"]}"></i>anchored (End = rest, starts at the end-of-exercise value ◆, series 2 only)</span><span>○ = excluded cuff</span></div>`;
   const g2 = document.createElement("div"); g2.className = "grid2";
   for (const name of SERIES) { const d = document.createElement("div"); d.appendChild(fitPlot(s, name)); d.insertAdjacentHTML("beforeend", fitTable(s, name)); g2.appendChild(d); }
   fc.appendChild(g2); M.appendChild(fc);
@@ -773,7 +794,7 @@ function renderSubject() {
 // ------------------------------------------------------------ group summary
 function groupStats() {
   const out = [];
-  for (const name of SERIES) for (const fn of FITS) {
+  for (const name of SERIES) for (const fn of fitsFor(name)) {
     const ids = [], v = [];
     for (const sid of ST.order) { const s = ST.subj[sid]; if (!s.res || !s.res.series[name].fits[fn]) continue; if (usable(s, name, fn)) { ids.push(sid); v.push(s.res.series[name].fits[fn].rate); } }
     const n = v.length, mean = n ? v.reduce((a, b) => a + b) / n : NaN;
@@ -784,14 +805,14 @@ function groupStats() {
   return out;
 }
 function summaryHTML() {
-  let h = `<table><tr><th>Subject</th><th>Rest (µM/s)</th>`;
-  for (const name of SERIES) for (const fn of FITS) h += `<th>${name.startsWith("Series 1") ? "S1" : "S2"} ${fn}<br><span class=muted>rate (R²)</span></th>`;
+  let h = `<table><tr><th>Subject</th><th>Rest (µM/s)</th><th>End-ex. (µM/s)</th>`;
+  for (const name of SERIES) for (const fn of fitsFor(name)) h += `<th>${name.startsWith("Series 1") ? "S1" : "S2"} ${fn}<br><span class=muted>rate (R²)</span></th>`;
   h += `<th>Edits</th><th>Note</th></tr>`;
   for (const sid of ST.order) {
     const s = ST.subj[sid];
-    if (!s.res) { h += `<tr><td>${esc(sid)}</td><td colspan=9 class=muted>${esc(s.err || "")}</td></tr>`; continue; }
-    h += `<tr><td>${esc(sid)}${s.exclude ? ' <span class="badge ex">excl.</span>' : ""}</td><td class=num>${f(s.res.rest, 4)}</td>`;
-    for (const name of SERIES) for (const fn of FITS) { const ft = s.res.series[name].fits[fn]; const u = ft && usable(s, name, fn); const unres = !ft || ft.k >= ST.S.usableKHi || ft.k < ST.S.usableKLo;
+    if (!s.res) { h += `<tr><td>${esc(sid)}</td><td colspan=11 class=muted>${esc(s.err || "")}</td></tr>`; continue; }
+    h += `<tr><td>${esc(sid)}${s.exclude ? ' <span class="badge ex">excl.</span>' : ""}</td><td class=num>${f(s.res.rest, 4)}</td><td class=num>${f(s.res.endEx, 4)}</td>`;
+    for (const name of SERIES) for (const fn of fitsFor(name)) { const ft = s.res.series[name].fits[fn]; const u = ft && usable(s, name, fn); const unres = !ft || ft.k >= ST.S.usableKHi || ft.k < ST.S.usableKLo;
       h += `<td class="num ${u ? "u" : "nu"}">${unres ? "–" : f(ft.rate, 2)} <span class=muted>(${ft ? f(ft.R2, 2) : "–"})</span></td>`; }
     h += `<td class=num>${editsCount(s) || ""}</td><td>${esc(s.note)}</td></tr>`;
   }
@@ -844,6 +865,10 @@ function exportCSVs() {
   const gs = [["series", "fit", "n", "mean_per_min", "sd", "median", "min", "max", "subjects"]];
   for (const g of groupStats()) gs.push([g.name, g.fn, g.n, f(g.mean, 3), f(g.sd, 3), f(g.med, 3), f(g.min, 3), f(g.max, 3), g.ids.join(" ")]);
   setTimeout(() => download("group_summary.csv", gs.map(csvLine).join("\n")), 800);
+  const sj = [["subject", "excluded", "rest_mVO2", "rest_window_start_s", "rest_window_end_s", "end_exercise_mVO2", "end_ex_window_start_s", "end_ex_window_end_s", "edits", "note"]];
+  for (const sid of ST.order) { const s = ST.subj[sid]; if (!s.res) continue; const r = s.res;
+    sj.push([sid, s.exclude, f(r.rest, 5), f(r.restWin[0], 1), f(r.restWin[1], 1), f(r.endEx, 5), f(r.endExWin[0], 1), f(r.endExWin[1], 1), editsCount(s), s.note]); }
+  setTimeout(() => download("subjects.csv", sj.map(csvLine).join("\n")), 1200);
 }
 function buildPrint() {
   const P = $("#print"); P.innerHTML = "";
@@ -861,7 +886,7 @@ function buildPrint() {
     const pg2 = document.createElement("div"); pg2.className = "pg";
     pg2.innerHTML = `<h2>Subject ${esc(sid)}: 5-s cuffs</h2>`;
     for (const name of SERIES) { const h = document.createElement("div"); h.className = "help"; h.textContent = name; pg2.appendChild(h); const g = document.createElement("div"); g.className = "grid6"; s.res.series[name].occ.forEach((c, i) => g.appendChild(cuffPanel(s, name, i, false))); pg2.appendChild(g); }
-    const rw = document.createElement("div"); rw.style.maxWidth = "520px"; rw.appendChild(restPlot(s, false)); pg2.appendChild(rw);
+    const rw = document.createElement("div"); rw.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:8px;max-width:1040px"; rw.appendChild(windowPlot(s, "rest", false)); rw.appendChild(windowPlot(s, "endex", false)); pg2.appendChild(rw);
     P.appendChild(pg2);
   }
 }

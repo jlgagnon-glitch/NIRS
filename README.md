@@ -17,7 +17,7 @@ Everything runs in your own browser. The spreadsheets you load are never uploade
    - **Exclude** a bad cuff, or exclude a whole subject with a note.
 
    Edited values are highlighted, and **Reset** returns them to the defaults.
-5. **Export CSVs** gives `slopes.csv`, `fits.csv` and `group_summary.csv`. **Print / PDF report** prints a summary plus two pages per subject; choose *Save as PDF* in the print dialog. **Save session** stores your edits in a file so the analysis can be reproduced or shared.
+5. **Export CSVs** gives `slopes.csv`, `fits.csv`, `group_summary.csv` and `subjects.csv` (resting and end-of-exercise mVO₂). **Print / PDF report** prints a summary plus two pages per subject; choose *Save as PDF* in the print dialog. **Save session** stores your edits in a file so the analysis can be reproduced or shared.
 
 ## Expected protocol
 
@@ -29,10 +29,12 @@ For each series: a 5-minute arterial occlusion, then six 5-s occlusions (5 s off
 - **Finding the cuffs:** a 5-s on / 5-s off grid is aligned to the sharp tHb steps within −2 to +3 s of the series marker. Each edge is then refined to the nearest step (±0.6 s).
 - **mVO₂:** the least-squares slope of corrected HHb from 1.0 s after cuff-on to 0.3 s before cuff-off (µM/s).
 - **Resting mVO₂:** the same slope from 1.0 s to 30.5 s after the first 5-minute cuff goes on.
+- **End-of-exercise mVO₂:** the same slope from 1.0 s to 4.7 s after the second 5-minute cuff goes on (as the hand grip stops), i.e. the window of a 5-s cuff.
 - **Recovery model:** y(t) = End − Delta·e^(−t/k), with t = 0 at the first 5-s cuff. The rate constant is 60/k (min⁻¹). Three fits are made:
   - 1-parameter: End = resting mVO₂, Delta = End − the first point;
   - 2-parameter: End = resting mVO₂;
-  - 3-parameter: all three parameters free.
+  - 3-parameter: all three parameters free;
+  - anchored (post-exercise series only): End = resting mVO₂, and the curve passes through the end-of-exercise mVO₂ at the release of the second 5-minute cuff (recovery is assumed to pause while the cuff is on), so only k is fitted.
 
   k is bounded to 0.5–2000 s.
 - **Usable fit:** k between 5 and 1990 s, R² ≥ 0.80, no negative mVO₂ slope among the included cuffs, and the subject not excluded.
