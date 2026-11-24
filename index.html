@@ -1,0 +1,886 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NIRS mVO₂ Recovery Analyzer</title>
+<style>
+:root{--bg:#f7f6f2;--panel:#fff;--ink:#1d1c1a;--ink2:#55534e;--mut:#8a877f;--line:#e2e0d8;--accent:#2a78d6;--o2:#d9453f;--hhb:#2a78d6;--warn:#b45309;--ok:#15803d;--bad:#b91c1c;--orange:#e8681f;--green:#16a34a}
+*{box-sizing:border-box}
+body{margin:0;font:14px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;color:var(--ink);background:var(--bg)}
+header{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 16px;background:var(--panel);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5}
+header h1{font-size:17px;margin:0 12px 0 0}
+button,.btn{font:inherit;font-size:13px;padding:6px 11px;border:1px solid var(--line);background:#fff;border-radius:7px;cursor:pointer;color:var(--ink)}
+button:hover,.btn:hover{border-color:var(--mut)}
+button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+button.small{font-size:11.5px;padding:2px 7px;border-radius:5px}
+input[type=number],input[type=text]{font:inherit;font-size:13px;padding:4px 6px;border:1px solid var(--line);border-radius:6px;width:90px}
+input[type=text]{width:260px}
+.wrap{display:flex;min-height:calc(100vh - 56px)}
+aside{width:250px;flex:none;border-right:1px solid var(--line);background:var(--panel);overflow:auto;max-height:calc(100vh - 56px);position:sticky;top:56px}
+aside .item{padding:7px 12px;border-bottom:1px solid var(--line);cursor:pointer;display:flex;justify-content:space-between;gap:6px;align-items:center}
+aside .item:hover{background:#f2f1ec}
+aside .item.sel{background:#e9f1fb}
+aside .sid{font-weight:600}
+aside .meta{font-size:11.5px;color:var(--ink2)}
+.badge{display:inline-block;font-size:10.5px;padding:1px 6px;border-radius:10px;margin-left:3px;border:1px solid var(--line);color:var(--ink2);white-space:nowrap}
+.badge.ok{color:var(--ok);border-color:#bbe5c8;background:#effaf2}
+.badge.bad{color:var(--bad);border-color:#f3c4c4;background:#fdf1f1}
+.badge.ed{color:var(--warn);border-color:#f2d5a8;background:#fff8ec}
+.badge.ex{color:#fff;background:var(--mut);border-color:var(--mut)}
+main{flex:1;padding:14px 18px;min-width:0}
+.tabs{display:flex;gap:6px;margin-bottom:12px}
+.tabs button.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-bottom:14px}
+.card h2{font-size:15px;margin:0 0 8px}
+.card h3{font-size:13.5px;margin:0 0 6px}
+.row{display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end}
+.row label{display:flex;flex-direction:column;font-size:11.5px;color:var(--ink2);gap:2px}
+.row label.inline{flex-direction:row;align-items:center;gap:6px;font-size:13px;color:var(--ink)}
+.auto{font-size:11px;color:var(--mut)}
+.edited input{border-color:var(--warn);background:#fff8ec}
+.grid6{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px}
+.cuff{border:1px solid var(--line);border-radius:8px;padding:4px 5px 5px;position:relative}
+.cuff.excl{opacity:.45}
+.cuff .t{font-size:11.5px;display:flex;justify-content:space-between;align-items:center;gap:4px}
+.cuff .t b{font-weight:600}
+.cuff .flags{min-height:16px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+table{border-collapse:collapse;width:100%;font-size:12.5px}
+th,td{border-bottom:1px solid var(--line);padding:4px 6px;text-align:left;vertical-align:top}
+th{font-weight:600;background:#f3f2ee;position:sticky;top:0}
+td.num{text-align:right;font-variant-numeric:tabular-nums}
+.muted{color:var(--mut)}
+.u{color:var(--ok);font-weight:600}.nu{color:var(--mut)}
+svg{display:block;width:100%;height:auto;user-select:none}
+svg text{font-family:inherit}
+.handle{cursor:ew-resize}
+.drop{border:2px dashed var(--line);border-radius:12px;padding:40px;text-align:center;color:var(--ink2);background:var(--panel)}
+.drop.hover{border-color:var(--accent);background:#eef5fd}
+.help{font-size:12.5px;color:var(--ink2)}
+.settings{display:none}.settings.open{display:block}
+.legend{font-size:11.5px;color:var(--ink2);display:flex;gap:14px;flex-wrap:wrap;margin:2px 0 6px}
+.sw{display:inline-block;width:14px;height:3px;vertical-align:middle;margin-right:4px}
+#status{font-size:12px;color:var(--ink2)}
+#print{display:none}
+@media print{
+  header,aside,main,.wrap,.noprint{display:none!important}
+  #print{display:block}
+  body{background:#fff}
+  .pg{page-break-after:always;padding:6px}
+  .pg h2{font-size:15px;margin:0 0 6px}
+  #print th{position:static}
+  #print table{font-size:9.5px}
+  #print tr{page-break-inside:avoid}
+  #print .pg:first-child{page-break-after:always}
+  .pg .grid6{gap:4px}
+  @page{size:landscape;margin:12mm}
+}
+</style>
+</head>
+<body>
+<header>
+  <h1>NIRS mVO₂ Recovery Analyzer</h1>
+  <label class="btn">Add .xlsx files<input id="fileIn" type="file" accept=".xlsx" multiple hidden></label>
+  <label class="btn">Load protocol CSV<input id="protIn" type="file" accept=".csv,text/csv" hidden></label>
+  <label class="btn">Load session<input id="sessIn" type="file" accept=".json" hidden></label>
+  <button id="saveSess">Save session</button>
+  <button id="expCsv">Export CSVs</button>
+  <button id="printBtn">Print / PDF report</button>
+  <button id="setBtn">Settings</button>
+  <span id="status"></span>
+</header>
+<div class="wrap">
+  <aside id="list"></aside>
+  <main id="main"></main>
+</div>
+<div id="print"></div>
+<script>
+// NIRS mVO2 recovery analysis engine (browser + Node). Mirrors nirs_mvo2.py.
+(function (root) {
+"use strict";
+
+const DEFAULTS = {
+  o2Col: 6, hhbCol: 7, eventCol: 16, textCol: 17,
+  nCuffs: 6, cycle: 10.0, cuffDelay: 5.0,
+  refWindow: 0.2, slopeStart: 1.0, slopeTrim: 0.3,
+  restStart: 1.0, restEnd: 30.5,
+  shiftLo: -2.0, shiftHi: 3.0,
+  kLo: 0.5, kHi: 2000.0,
+  usableKLo: 5.0, usableKHi: 1990.0, usableR2: 0.80,
+  curvatureFlag: 0.1,
+};
+const FITS = ["1-param", "2-param", "3-param"];
+const SERIES = ["Series 1 (pre-exercise)", "Series 2 (post-exercise)"];
+const MARK_KEYS = ["occl1_start", "series1_start", "occl2_start", "series2_start"];
+
+// ------------------------------------------------------------ xlsx reading
+async function inflateRaw(bytes) {
+  const ds = new DecompressionStream("deflate-raw");
+  const stream = new Blob([bytes]).stream().pipeThrough(ds);
+  return new Uint8Array(await new Response(stream).arrayBuffer());
+}
+
+async function unzip(buf, wanted) {
+  const u8 = new Uint8Array(buf), dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength);
+  let eocd = -1;
+  for (let i = u8.length - 22; i >= Math.max(0, u8.length - 70000); i--) {
+    if (dv.getUint32(i, true) === 0x06054b50) { eocd = i; break; }
+  }
+  if (eocd < 0) throw new Error("Not a valid .xlsx (zip) file");
+  const n = dv.getUint16(eocd + 10, true);
+  let p = dv.getUint32(eocd + 16, true);
+  const out = {}, dec = new TextDecoder();
+  for (let k = 0; k < n; k++) {
+    const method = dv.getUint16(p + 10, true), csize = dv.getUint32(p + 20, true);
+    const nlen = dv.getUint16(p + 28, true), xlen = dv.getUint16(p + 30, true), clen = dv.getUint16(p + 32, true);
+    const local = dv.getUint32(p + 42, true);
+    const name = dec.decode(u8.subarray(p + 46, p + 46 + nlen));
+    p += 46 + nlen + xlen + clen;
+    if (!wanted(name)) continue;
+    const lnlen = dv.getUint16(local + 26, true), lxlen = dv.getUint16(local + 28, true);
+    const data = u8.subarray(local + 30 + lnlen + lxlen, local + 30 + lnlen + lxlen + csize);
+    const raw = method === 0 ? data : await inflateRaw(data);
+    out[name] = dec.decode(raw);
+  }
+  return out;
+}
+
+function xmlText(s) {
+  return s.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"')
+          .replace(/&apos;/g, "'").replace(/&amp;/g, "&");
+}
+
+function colIndex(ref) { // "AB12" -> 27 (0-based)
+  let n = 0;
+  for (const ch of ref) { const c = ch.charCodeAt(0); if (c < 65 || c > 90) break; n = n * 26 + (c - 64); }
+  return n - 1;
+}
+
+async function readXlsx(buf, sheetName) {
+  const files = await unzip(buf, n => n.startsWith("xl/"));
+  const shared = [];
+  const sst = files["xl/sharedStrings.xml"];
+  if (sst) {
+    for (const m of sst.matchAll(/<si>([\s\S]*?)<\/si>/g)) {
+      shared.push(xmlText([...m[1].matchAll(/<t[^>]*>([\s\S]*?)<\/t>/g)].map(x => x[1]).join("")));
+    }
+  }
+  let target = "xl/worksheets/sheet1.xml";
+  const wb = files["xl/workbook.xml"], rels = files["xl/_rels/workbook.xml.rels"];
+  if (wb && rels) {
+    const sh = [...wb.matchAll(/<sheet [^>]*?name="([^"]*)"[^>]*?r:id="([^"]*)"/g)];
+    const hit = sh.find(s => xmlText(s[1]) === sheetName) || sh[0];
+    if (hit) {
+      const rel = [...rels.matchAll(/<Relationship [^>]*?Id="([^"]*)"[^>]*?Target="([^"]*)"/g)]
+        .concat([...rels.matchAll(/<Relationship [^>]*?Target="([^"]*)"[^>]*?Id="([^"]*)"/g)].map(m => [m[0], m[2], m[1]]))
+        .find(r => r[1] === hit[2]);
+      if (rel) target = rel[2].startsWith("/") ? rel[2].slice(1) : "xl/" + rel[2].replace(/^\.\//, "");
+    }
+  }
+  const xml = files[target];
+  if (!xml) throw new Error("Sheet not found in workbook");
+  const rows = [];
+  for (const rm of xml.matchAll(/<row\b[^>]*>([\s\S]*?)<\/row>/g)) {
+    const row = [];
+    for (const cm of rm[1].matchAll(/<c\b([^>]*?)(?:\/>|>([\s\S]*?)<\/c>)/g)) {
+      const attrs = cm[1], body = cm[2] || "";
+      const r = /\br="([A-Z]+)\d+"/.exec(attrs), t = /\bt="([^"]*)"/.exec(attrs);
+      const ci = r ? colIndex(r[1]) : row.length;
+      let v = null;
+      const vm = /<v>([\s\S]*?)<\/v>/.exec(body);
+      if (t && t[1] === "s") v = vm ? shared[+vm[1]] : null;
+      else if (t && t[1] === "inlineStr") { const im = /<t[^>]*>([\s\S]*?)<\/t>/.exec(body); v = im ? xmlText(im[1]) : ""; }
+      else if (t && (t[1] === "str" || t[1] === "e")) v = vm ? xmlText(vm[1]) : null;
+      else if (t && t[1] === "b") v = vm ? vm[1] === "1" : null;
+      else v = vm ? parseFloat(vm[1]) : null;
+      row[ci] = v;
+    }
+    rows.push(row);
+  }
+  return rows;
+}
+
+// Same logic as read_oxysoft() in the Python script.
+function parseOxysoft(rows, S) {
+  S = S || DEFAULTS;
+  let rate = 10.0, inData = false;
+  const t = [], o2 = [], hhb = [], events = [];
+  for (const row of rows) {
+    if (!row.length || row[0] === undefined || row[0] === null) continue;
+    if (row[0] === "Export sample rate") rate = +row[1];
+    else if (!inData && row[0] === 1 && row[1] === 2 && row[2] === 3) inData = true;
+    else if (inData && typeof row[0] === "number" && row[S.o2Col - 1] != null) {
+      const tt = row[0] / rate;
+      t.push(tt); o2.push(+row[S.o2Col - 1]); hhb.push(+row[S.hhbCol - 1]);
+      const code = row[S.eventCol - 1];
+      if (code != null && tt > 0.5) {
+        const text = row[S.textCol - 1];
+        events.push([tt, String(code).trim(), String(text == null ? "" : text).trim()]);
+      }
+    }
+  }
+  return { t: Float64Array.from(t), o2: Float64Array.from(o2), hhb: Float64Array.from(hhb), events, rate };
+}
+
+// Guess the four protocol times from the event markers. A long occlusion is a marker followed
+// 230-315 s later by the series start. When several markers qualify, the one where the
+// 5-s cuff grid fits the tHb steps best is chosen (this needs the data D and the step array).
+function guessMarks(events, D, S) {
+  S = S || DEFAULTS;
+  const tt = events.map(e => e[0]);
+  const step = D ? stepSize(D) : null;
+  const score = x => step ? locateCuffs(D.t, step, x, S).score : -Math.abs(x);
+  function pairFrom(start) {
+    for (let i = start; i < tt.length; i++) {
+      const cands = [];
+      for (let j = i + 1; j < tt.length; j++) {
+        const d = tt[j] - tt[i];
+        if (d >= 230 && d <= 315) cands.push(j);
+      }
+      if (!cands.length) continue;
+      let best = cands[0], bs = score(tt[best]);
+      for (const j of cands.slice(1)) { const sc = score(tt[j]); if (sc > bs) { bs = sc; best = j; } }
+      return { i, j: best };
+    }
+    return null;
+  }
+  const p1 = pairFrom(0); if (!p1) return null;
+  const next = tt.findIndex(v => v > tt[p1.j] + 40);
+  const p2 = next >= 0 ? pairFrom(next) : null; if (!p2) return null;
+  return { occl1_start: tt[p1.i], series1_start: tt[p1.j], occl2_start: tt[p2.i], series2_start: tt[p2.j] };
+}
+
+// ------------------------------------------------------------ signal processing
+function lowerIdx(t, x) { let lo = 0, hi = t.length; while (lo < hi) { const m = (lo + hi) >> 1; if (t[m] < x) lo = m + 1; else hi = m; } return lo; }
+function upperIdx(t, x) { let lo = 0, hi = t.length; while (lo < hi) { const m = (lo + hi) >> 1; if (t[m] <= x) lo = m + 1; else hi = m; } return lo; }
+
+// Ryan correction over samples i0..i1-1, zeroed on samples with refA <= t <= refB.
+function ryanRange(D, refA, refB, i0, i1) {
+  const { t, o2, hhb } = D;
+  const r0 = lowerIdx(t, refA), r1 = upperIdx(t, refB);
+  let mo = 0, mh = 0;
+  for (let i = r0; i < r1; i++) { mo += o2[i]; mh += hhb[i]; }
+  mo /= (r1 - r0); mh /= (r1 - r0);
+  const n = i1 - i0, oc = new Float64Array(n), hc = new Float64Array(n);
+  for (let j = 0; j < n; j++) {
+    const dO = o2[i0 + j] - mo, dH = hhb[i0 + j] - mh, dT = dO + dH;
+    const tot = Math.abs(dO) + Math.abs(dH), beta = tot > 0 ? Math.abs(dO) / tot : 0.5;
+    oc[j] = dO - dT * (1 - beta); hc[j] = dH - dT * beta;
+  }
+  return { oc, hc };
+}
+
+function stepSize(D) {
+  const th = D.o2.map((v, i) => v + D.hhb[i]);
+  const s = new Float64Array(th.length);
+  for (let i = 1; i < th.length - 2; i++) s[i] = Math.abs(th[i + 2] - th[i - 1]);
+  return s;
+}
+
+function nearestStep(t, step, t0, tol) {
+  const a = lowerIdx(t, t0 - tol), b = upperIdx(t, t0 + tol);
+  let best = -1, bi = 0;
+  if (a >= b) return [t[0] + 0.1, -1];
+  for (let i = a; i < b; i++) if (step[i] > best) { best = step[i]; bi = i; }
+  return [t[bi] + 0.1, best];
+}
+
+function locateCuffs(t, step, start, S) {
+  let best = null, bestScore = -Infinity;
+  const nShift = Math.ceil((S.shiftHi + 0.01 - S.shiftLo) / 0.1);
+  for (let k = 0; k < nShift; k++) {
+    const shift = S.shiftLo + k * 0.1;
+    let sc = 0;
+    for (let i = 0; i < S.nCuffs; i++)
+      for (const extra of [0.0, S.cuffDelay])
+        sc += nearestStep(t, step, start + shift + S.cuffDelay + S.cycle * i + extra, 0.4)[1];
+    if (sc > bestScore) { bestScore = sc; best = shift; }
+  }
+  const cuffs = [];
+  for (let i = 0; i < S.nCuffs; i++) {
+    const on = nearestStep(t, step, start + best + S.cuffDelay + S.cycle * i, 0.6)[0];
+    const off = nearestStep(t, step, start + best + S.cycle * (i + 1), 0.6)[0];
+    cuffs.push([on, off]);
+  }
+  return { shift: best, cuffs, score: bestScore };
+}
+
+function linfit(x, y) {
+  const n = x.length; let sx = 0, sy = 0;
+  for (let i = 0; i < n; i++) { sx += x[i]; sy += y[i]; }
+  const mx = sx / n, my = sy / n; let sxx = 0, sxy = 0, syy = 0;
+  for (let i = 0; i < n; i++) { const dx = x[i] - mx, dy = y[i] - my; sxx += dx * dx; sxy += dx * dy; syy += dy * dy; }
+  const m = sxy / sxx;
+  return { m, b: my - m * mx, r2: (sxy * sxy) / (sxx * syy) };
+}
+
+// curvature check: gain in R^2 from a quadratic over a straight line (0 unless the quadratic fits well)
+function curvature(x, y) {
+  const n = x.length; if (n < 5) return 0;
+  const mx = x.reduce((a, b) => a + b) / n;
+  const X = x.map(v => v - mx);
+  let s = [0, 0, 0, 0, 0], r = [0, 0, 0];
+  for (let i = 0; i < n; i++) { let p = 1; for (let k = 0; k < 5; k++) { s[k] += p; p *= X[i]; } r[0] += y[i]; r[1] += y[i] * X[i]; r[2] += y[i] * X[i] * X[i]; }
+  const A = [[s[0], s[1], s[2]], [s[1], s[2], s[3]], [s[2], s[3], s[4]]];
+  const c = solve3(A, r); if (!c) return 0;
+  const my = r[0] / n; let sst = 0, ssq = 0;
+  for (let i = 0; i < n; i++) { const f = c[0] + c[1] * X[i] + c[2] * X[i] * X[i]; ssq += (y[i] - f) ** 2; sst += (y[i] - my) ** 2; }
+  const lin = linfit(x, y);
+  const r2q = 1 - ssq / sst;
+  return r2q >= 0.6 ? r2q - lin.r2 : 0;   // only a real curved trend counts, not curved noise
+}
+function solve3(A, b) {
+  const M = A.map((row, i) => [...row, b[i]]);
+  for (let c = 0; c < 3; c++) {
+    let p = c; for (let r = c + 1; r < 3; r++) if (Math.abs(M[r][c]) > Math.abs(M[p][c])) p = r;
+    if (Math.abs(M[p][c]) < 1e-300) return null; [M[c], M[p]] = [M[p], M[c]];
+    for (let r = 0; r < 3; r++) if (r !== c) { const f = M[r][c] / M[c][c]; for (let k = c; k < 4; k++) M[r][k] -= f * M[c][k]; }
+  }
+  return [M[0][3] / M[0][0], M[1][3] / M[1][1], M[2][3] / M[2][2]];
+}
+
+// mVO2 for one window: Ryan-corrected HHb zeroed on [on-refWindow, on], slope over [t0, t1]
+function correctedSlope(D, on, t0, t1, S) {
+  const i0 = lowerIdx(D.t, t0), i1 = upperIdx(D.t, t1);
+  const { hc } = ryanRange(D, on - S.refWindow, on, i0, i1);
+  const x = Array.from(D.t.subarray(i0, i1));
+  const f = linfit(x, Array.from(hc));
+  return { slope: f.m, r2: f.r2, curv: curvature(x, Array.from(hc)) };
+}
+
+// ------------------------------------------------------------ exponential fits
+const model = (t, end, delta, k) => end - delta * Math.exp(-t / k);
+
+function fitRecovery(t, y, rest, S) {
+  const n = t.length, lo = S.kLo, hi = S.kHi;
+  if (n < 3) return {};
+  const ymean = y.reduce((a, b) => a + b, 0) / n;
+  const sst = y.reduce((a, v) => a + (v - ymean) ** 2, 0);
+  const delta0 = rest - y[0];
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  const solvers = {
+    "1-param": k => [rest, delta0],
+    "2-param": k => { let se = 0, sd = 0; for (let i = 0; i < n; i++) { const e = Math.exp(-t[i] / k); se += e * e; sd += e * (rest - y[i]); }
+                      return [rest, clamp(sd / se, -50, 50)]; },
+    "3-param": k => { let s1 = 0, se = 0, see = 0, sy = 0, sey = 0;
+                      for (let i = 0; i < n; i++) { const e = Math.exp(-t[i] / k); s1++; se += e; see += e * e; sy += y[i]; sey += e * y[i]; }
+                      const det = s1 * see - se * se;
+                      if (Math.abs(det) < 1e-14 * Math.max(1, s1 * see)) return [ymean, 0];
+                      let end = (sy * see - se * sey) / det, b = (s1 * sey - se * sy) / det; // y = end + b*e
+                      let delta = -b;
+                      if (end < -50 || end > 50) { end = clamp(end, -50, 50); delta = 0; for (let i = 0; i < n; i++) {} let num = 0; for (let i = 0; i < n; i++) { const e = Math.exp(-t[i] / k); num += e * (end - y[i]); } delta = clamp(num / see, -50, 50); }
+                      else if (delta < -50 || delta > 50) { delta = clamp(delta, -50, 50); let s = 0; for (let i = 0; i < n; i++) s += y[i] + delta * Math.exp(-t[i] / k); end = clamp(s / n, -50, 50); }
+                      return [end, delta]; },
+  };
+  const out = {};
+  for (const name of FITS) {
+    const sse = k => { const [e, d] = solvers[name](k); let s = 0; for (let i = 0; i < n; i++) s += (y[i] - model(t[i], e, d, k)) ** 2; return s; };
+    // global search on a log grid of k, then golden-section refinement
+    const N = 3000, L0 = Math.log(lo), L1 = Math.log(hi);
+    let bi = 0, bv = Infinity; const vals = new Float64Array(N + 1);
+    for (let j = 0; j <= N; j++) { vals[j] = sse(Math.exp(L0 + (L1 - L0) * j / N)); if (vals[j] < bv) { bv = vals[j]; bi = j; } }
+    let a = L0 + (L1 - L0) * Math.max(0, bi - 1) / N, b = L0 + (L1 - L0) * Math.min(N, bi + 1) / N;
+    const g = (Math.sqrt(5) - 1) / 2;
+    let c = b - g * (b - a), d = a + g * (b - a), fc = sse(Math.exp(c)), fd = sse(Math.exp(d));
+    for (let it = 0; it < 80; it++) {
+      if (fc < fd) { b = d; d = c; fd = fc; c = b - g * (b - a); fc = sse(Math.exp(c)); }
+      else { a = c; c = d; fc = fd; d = a + g * (b - a); fd = sse(Math.exp(d)); }
+    }
+    let k = Math.exp((a + b) / 2); if (sse(Math.exp(L0 + (L1 - L0) * bi / N)) < sse(k)) k = Math.exp(L0 + (L1 - L0) * bi / N);
+    const [end, delta] = solvers[name](k);
+    const r2 = 1 - sse(k) / sst;
+    out[name] = { End: end, Delta: delta, k, rate: 60 / k, R2: r2 };
+  }
+  return out;
+}
+
+function isUsable(fit, slopes, S) {
+  return fit && fit.k >= S.usableKLo && fit.k < S.usableKHi && fit.R2 >= S.usableR2 && Math.min(...slopes) >= 0;
+}
+
+// ------------------------------------------------------------ one subject
+// ov: manual overrides {marks:{}, rest:[t0,t1], series:{name:{cuffs:{i:{on,off,t0,t1,excluded}}}}}
+function analyze(D, marks, S, ov) {
+  S = S || DEFAULTS; ov = ov || {};
+  const m = Object.assign({}, marks, ov.marks || {});
+  const step = stepSize(D);
+  const cuff1 = ov.cuff1 != null ? ov.cuff1 : nearestStep(D.t, step, m.occl1_start, 2.0)[0];
+  const rw = ov.rest || [cuff1 + S.restStart, cuff1 + S.restEnd];
+  const rs = correctedSlope(D, cuff1, rw[0], rw[1], S);
+  const res = { marks: m, cuff1, restWin: rw, rest: rs.slope, restR2: rs.r2, series: {} };
+  SERIES.forEach((name, si) => {
+    const key = si === 0 ? "series1_start" : "series2_start";
+    const auto = locateCuffs(D.t, step, m[key], S);
+    const sov = ((ov.series || {})[name] || {}).cuffs || {};
+    const occ = auto.cuffs.map(([aon, aoff], i) => {
+      const o = sov[i] || {};
+      const on = o.on != null ? o.on : aon, off = o.off != null ? o.off : aoff;
+      const t0 = o.t0 != null ? o.t0 : on + S.slopeStart, t1 = o.t1 != null ? o.t1 : off - S.slopeTrim;
+      const cs = correctedSlope(D, on, t0, t1, S);
+      const edited = ["on", "off", "t0", "t1"].some(k => o[k] != null);
+      return { on, off, t0, t1, slope: cs.slope, r2: cs.r2, curv: cs.curv, excluded: !!o.excluded, edited,
+               flagCurved: cs.curv > S.curvatureFlag, flagShort: t1 - t0 < 2.0 };
+    });
+    const mid0 = (occ[0].on + occ[0].off) / 2;
+    occ.forEach(c => c.t = (c.on + c.off) / 2 - mid0);
+    const used = occ.filter(c => !c.excluded);
+    const tt = used.map(c => c.t), y = used.map(c => c.slope);
+    res.series[name] = { shift: auto.shift, occ, t: tt, y, fits: fitRecovery(tt, y, rs.slope, S) };
+  });
+  return res;
+}
+
+function wholeCorrected(D, cuff1) {
+  return ryanRange(D, cuff1 - 10.5, cuff1 - 0.5, 0, D.t.length);
+}
+
+function parseCSV(text) {
+  const lines = text.replace(/\r/g, "").split("\n").filter(l => l.trim());
+  const head = lines[0].split(",").map(s => s.trim());
+  return lines.slice(1).map(l => {
+    const cells = []; let cur = "", q = false;
+    for (const ch of l) { if (ch === '"') q = !q; else if (ch === "," && !q) { cells.push(cur); cur = ""; } else cur += ch; }
+    cells.push(cur);
+    const o = {}; head.forEach((h, i) => o[h] = (cells[i] || "").trim()); return o;
+  });
+}
+
+const API = { DEFAULTS, FITS, SERIES, MARK_KEYS, readXlsx, parseOxysoft, guessMarks, ryanRange, stepSize,
+              nearestStep, locateCuffs, linfit, correctedSlope, model, fitRecovery, isUsable, analyze,
+              wholeCorrected, parseCSV, lowerIdx, upperIdx };
+if (typeof module !== "undefined" && module.exports) module.exports = API; else root.NIRS = API;
+})(typeof window !== "undefined" ? window : globalThis);
+
+</script>
+<script>
+// NIRS mVO2 Recovery Analyzer: user interface
+(function () {
+"use strict";
+const N = window.NIRS, SERIES = N.SERIES, FITS = N.FITS, KEYS = N.MARK_KEYS;
+const FIT_COL = { "1-param": "#2a78d6", "2-param": "#e8681f", "3-param": "#16a34a" };
+const FIT_DASH = { "1-param": "", "2-param": "6 4", "3-param": "" };
+const MARK_LABEL = { occl1_start: "5-min occlusion 1 start", series1_start: "Series 1 start (release)",
+                     occl2_start: "5-min occlusion 2 start", series2_start: "Series 2 start (release)" };
+const STORE = "nirs-mvo2-session-v1";
+const ST = { S: Object.assign({}, N.DEFAULTS), subj: {}, order: [], sel: null, tab: "subject",
+             protocol: {}, pending: {}, showSettings: false };
+const $ = s => document.querySelector(s);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const f = (v, d) => (v == null || !isFinite(v)) ? "–" : v.toFixed(d);
+
+// ------------------------------------------------------------ persistence
+function snapshot() {
+  const subjects = {};
+  for (const sid of ST.order) { const s = ST.subj[sid]; subjects[sid] = { base: s.base, ov: s.ov, exclude: s.exclude, note: s.note }; }
+  for (const sid in ST.pending) if (!subjects[sid]) subjects[sid] = ST.pending[sid];
+  return { app: "NIRS mVO2 Recovery Analyzer", version: 1, saved: new Date().toISOString(), settings: ST.S, subjects };
+}
+function persist() { try { localStorage.setItem(STORE, JSON.stringify(snapshot())); } catch (e) {} }
+function applySession(obj) {
+  if (obj.settings) ST.S = Object.assign({}, N.DEFAULTS, obj.settings);
+  for (const sid in obj.subjects || {}) {
+    const v = obj.subjects[sid];
+    if (ST.subj[sid]) { const s = ST.subj[sid]; if (v.base) s.base = v.base; s.ov = v.ov || {}; s.exclude = !!v.exclude; s.note = v.note || ""; }
+    else ST.pending[sid] = v;
+  }
+}
+try { const saved = JSON.parse(localStorage.getItem(STORE) || "null"); if (saved) { ST.S = Object.assign({}, N.DEFAULTS, saved.settings || {}); ST.pending = saved.subjects || {}; } } catch (e) {}
+
+// ------------------------------------------------------------ loading
+function sidFromName(name) { const m = /subject\s*0*(\d{1,4})/i.exec(name); return m ? m[1].padStart(4, "0") : name.replace(/\.xlsx$/i, ""); }
+async function addFiles(files) {
+  const list = [...files].filter(fl => /\.xlsx$/i.test(fl.name));
+  let i = 0;
+  for (const fl of list) {
+    i++; status(`Reading ${fl.name} (${i}/${list.length})…`);
+    try {
+      const rows = await N.readXlsx(await fl.arrayBuffer(), "Export 1");
+      const D = N.parseOxysoft(rows, ST.S);
+      if (D.t.length < 100) throw new Error("no data rows found");
+      const sid = sidFromName(fl.name);
+      const guess = N.guessMarks(D.events, D, ST.S);
+      const s = { sid, fileName: fl.name, D, guess, base: null, ov: {}, exclude: false, note: "", res: null, err: null };
+      const pend = ST.pending[sid], prot = ST.protocol[sid];
+      s.base = (pend && pend.base) || (prot && prot.marks) || guess;
+      if (prot) { s.exclude = prot.exclude; s.note = prot.note; }
+      if (pend) { s.ov = pend.ov || {}; s.exclude = !!pend.exclude; s.note = pend.note || s.note; delete ST.pending[sid]; }
+      ST.subj[sid] = s; if (!ST.order.includes(sid)) ST.order.push(sid);
+      compute(sid);
+    } catch (e) { alert(`Could not read ${fl.name}: ${e.message}`); }
+    await new Promise(r => setTimeout(r, 0));
+  }
+  ST.order.sort();
+  if (!ST.sel && ST.order.length) ST.sel = ST.order[0];
+  status(`${ST.order.length} subject(s) loaded`); persist(); render();
+}
+function loadProtocol(text) {
+  const rows = N.parseCSV(text); let n = 0;
+  for (const r of rows) {
+    if (!r.subject) continue;
+    const sid = r.subject.padStart(4, "0"), marks = {};
+    let ok = true; for (const k of KEYS) { marks[k] = parseFloat(r[k]); if (!isFinite(marks[k])) ok = false; }
+    if (!ok) continue;
+    ST.protocol[sid] = { marks, exclude: (r.exclude || "").trim().toLowerCase() === "yes", note: r.note || "" };
+    const s = ST.subj[sid];
+    if (s) { s.base = marks; s.ov.marks = {}; s.exclude = ST.protocol[sid].exclude; s.note = ST.protocol[sid].note; compute(sid); }
+    n++;
+  }
+  status(`Protocol loaded for ${n} subject(s)`); persist(); render();
+}
+function compute(sid) {
+  const s = ST.subj[sid];
+  if (!s.base) { s.res = null; s.err = "Marker times needed: enter the four protocol times below."; return; }
+  try { s.res = N.analyze(s.D, s.base, ST.S, s.ov); s.err = null; }
+  catch (e) { s.res = null; s.err = "Analysis failed: " + e.message; }
+}
+function recomputeAll() { for (const sid of ST.order) compute(sid); persist(); render(); }
+function status(t) { $("#status").textContent = t; }
+
+// ------------------------------------------------------------ helpers
+function editsCount(s) {
+  const ov = s.ov || {}; let n = Object.keys(ov.marks || {}).length + (ov.rest ? 1 : 0);
+  for (const nm in ov.series || {}) for (const i in (ov.series[nm].cuffs || {})) { const c = ov.series[nm].cuffs[i]; if (Object.keys(c).some(k => c[k] != null && c[k] !== false)) n++; }
+  return n;
+}
+function usable(s, name, fit) { const ser = s.res.series[name]; const ft = ser.fits[fit]; return !s.exclude && N.isUsable(ft, ser.y, ST.S); }
+function cuffOv(s, name, i) { s.ov.series = s.ov.series || {}; s.ov.series[name] = s.ov.series[name] || { cuffs: {} }; s.ov.series[name].cuffs[i] = s.ov.series[name].cuffs[i] || {}; return s.ov.series[name].cuffs[i]; }
+function niceTicks(a, b, n) {
+  const span = b - a || 1, raw = span / n, mag = Math.pow(10, Math.floor(Math.log10(raw)));
+  const st = [1, 2, 2.5, 5, 10].map(x => x * mag).find(x => span / x <= n) || 10 * mag;
+  const out = []; for (let v = Math.ceil(a / st) * st; v <= b + st * 1e-9; v += st) out.push(+v.toFixed(10)); return out;
+}
+const NS = "http://www.w3.org/2000/svg";
+function el(tag, attrs, parent, text) { const e = document.createElementNS(NS, tag); for (const k in attrs || {}) e.setAttribute(k, attrs[k]); if (text != null) e.textContent = text; if (parent) parent.appendChild(e); return e; }
+function frame(o) {
+  const W = o.w, H = o.h, m = Object.assign({ l: 46, r: 10, t: o.title ? 20 : 8, b: o.xlabel ? 34 : 22 }, o.m || {});
+  const svg = el("svg", { viewBox: `0 0 ${W} ${H}` });
+  const [x0, x1] = o.xlim, [y0, y1] = o.ylim;
+  const sx = x => m.l + (x - x0) / (x1 - x0) * (W - m.l - m.r), sy = y => H - m.b - (y - y0) / (y1 - y0) * (H - m.t - m.b);
+  const ix = px => x0 + (px - m.l) / (W - m.l - m.r) * (x1 - x0);
+  const fs = o.fs || 10;
+  for (const v of niceTicks(y0, y1, o.ny || 5)) { el("line", { x1: m.l, x2: W - m.r, y1: sy(v), y2: sy(v), stroke: "#ecebe5" }, svg); el("text", { x: m.l - 4, y: sy(v) + 3, "text-anchor": "end", "font-size": fs, fill: "#8a877f" }, svg, +v.toPrecision(4)); }
+  for (const v of niceTicks(x0, x1, o.nx || 8)) el("text", { x: sx(v), y: H - m.b + 12, "text-anchor": "middle", "font-size": fs, fill: "#8a877f" }, svg, +v.toPrecision(5));
+  el("line", { x1: m.l, x2: W - m.r, y1: H - m.b, y2: H - m.b, stroke: "#c3c2b7" }, svg);
+  if (o.title) el("text", { x: m.l, y: 13, "font-size": fs + 1.5, "font-weight": 600, fill: "#1d1c1a" }, svg, o.title);
+  if (o.xlabel) el("text", { x: (m.l + W - m.r) / 2, y: H - 4, "text-anchor": "middle", "font-size": fs, fill: "#55534e" }, svg, o.xlabel);
+  if (o.ylabel) el("text", { x: 11, y: (m.t + H - m.b) / 2, "text-anchor": "middle", "font-size": fs, fill: "#55534e", transform: `rotate(-90 11 ${(m.t + H - m.b) / 2})` }, svg, o.ylabel);
+  const clipId = "c" + Math.random().toString(36).slice(2);
+  const cp = el("clipPath", { id: clipId }, el("defs", {}, svg)); el("rect", { x: m.l, y: m.t, width: W - m.l - m.r, height: H - m.t - m.b }, cp);
+  const g = el("g", { "clip-path": `url(#${clipId})` }, svg);
+  return { svg, g, sx, sy, ix, m, W, H };
+}
+function polyline(P, xs, ys, attrs) {
+  let d = ""; for (let i = 0; i < xs.length; i++) if (isFinite(ys[i])) d += (d ? " " : "") + P.sx(xs[i]).toFixed(1) + "," + P.sy(ys[i]).toFixed(1);
+  return el("polyline", Object.assign({ points: d, fill: "none" }, attrs), P.g);
+}
+function extent(arrs, pad) { let a = Infinity, b = -Infinity; for (const v of arrs) for (const x of v) if (isFinite(x)) { if (x < a) a = x; if (x > b) b = x; } const p = (b - a || 1) * (pad == null ? 0.08 : pad); return [a - p, b + p]; }
+function svgX(svg, evt) { const pt = svg.createSVGPoint(); pt.x = evt.clientX; pt.y = evt.clientY; return pt.matrixTransform(svg.getScreenCTM().inverse()).x; }
+// draggable vertical handle; onEnd(newX) commits
+function handle(P, x, color, label, onEnd, opts) {
+  opts = opts || {};
+  const grp = el("g", { class: "handle" }, P.svg);
+  const ln = el("line", { x1: P.sx(x), x2: P.sx(x), y1: P.m.t, y2: P.H - P.m.b, stroke: color, "stroke-width": opts.width || 2, "stroke-dasharray": opts.dash || "" }, grp);
+  const hit = el("rect", { x: P.sx(x) - 6, y: P.m.t, width: 12, height: P.H - P.m.t - P.m.b, fill: "transparent" }, grp);
+  const knob = el("rect", { x: P.sx(x) - 4, y: P.m.t - 1, width: 8, height: 8, rx: 2, fill: color }, grp);
+  el("title", {}, grp, label + " (drag to adjust)");
+  let cur = x;
+  hit.addEventListener("pointerdown", e => {
+    e.preventDefault(); hit.setPointerCapture(e.pointerId);
+    const move = ev => { cur = Math.round(P.ix(svgX(P.svg, ev)) * 10) / 10; if (opts.min != null) cur = Math.max(opts.min, cur); if (opts.max != null) cur = Math.min(opts.max, cur);
+      const px = P.sx(cur); ln.setAttribute("x1", px); ln.setAttribute("x2", px); hit.setAttribute("x", px - 6); knob.setAttribute("x", px - 4); if (opts.onMove) opts.onMove(cur); };
+    const up = () => { hit.removeEventListener("pointermove", move); hit.removeEventListener("pointerup", up); if (Math.abs(cur - x) > 1e-9) onEnd(cur); };
+    hit.addEventListener("pointermove", move); hit.addEventListener("pointerup", up);
+  });
+  return grp;
+}
+
+// ------------------------------------------------------------ rendering: sidebar
+function renderList() {
+  const L = $("#list"); L.innerHTML = "";
+  const g = document.createElement("div"); g.className = "item" + (ST.tab === "group" ? " sel" : "");
+  g.innerHTML = `<span class="sid">Group summary</span><span class="meta">${ST.order.length} subj.</span>`; g.onclick = () => { ST.tab = "group"; render(); }; L.appendChild(g);
+  for (const sid of ST.order) {
+    const s = ST.subj[sid], d = document.createElement("div");
+    d.className = "item" + (ST.tab === "subject" && ST.sel === sid ? " sel" : "");
+    let right = "";
+    if (s.res) {
+      const fit = s.res.series[SERIES[1]].fits["2-param"];
+      const u = usable(s, SERIES[1], "2-param");
+      right = `<span class="meta">${u ? f(fit.rate, 2) + " /min" : ""}</span>` + (u ? `<span class="badge ok">usable</span>` : `<span class="badge bad">no fit</span>`);
+    } else right = `<span class="badge bad">needs markers</span>`;
+    const ne = editsCount(s);
+    d.innerHTML = `<span><span class="sid">${esc(sid)}</span>${s.exclude ? '<span class="badge ex">excl.</span>' : ""}${ne ? `<span class="badge ed">✎${ne}</span>` : ""}</span><span>${right}</span>`;
+    d.onclick = () => { ST.sel = sid; ST.tab = "subject"; render(); };
+    L.appendChild(d);
+  }
+}
+
+// ------------------------------------------------------------ rendering: one subject
+function overviewPlot(s, interactive) {
+  const D = s.D, r = s.res, w = 1100, h = 300;
+  const { oc, hc } = N.wholeCorrected(D, r.cuff1);
+  const step = 2, xs = [], yo = [], yh = [];
+  for (let i = 0; i < D.t.length; i += step) { xs.push(D.t[i]); yo.push(oc[i]); yh.push(hc[i]); }
+  const yl = extent([yo, yh], 0.06); yl[1] += (yl[1] - yl[0]) * 0.28;
+  const P = frame({ w, h, xlim: [D.t[0], D.t[D.t.length - 1]], ylim: yl, xlabel: "Time (s)", ylabel: "Change from rest (µM)", nx: 12 });
+  const m = r.marks, e1 = r.series[SERIES[0]].occ.slice(-1)[0].off, e2 = r.series[SERIES[1]].occ.slice(-1)[0].off;
+  const phases = [[r.cuff1, m.series1_start, "5-min occlusion 1", "#2a78d6"], [m.series1_start, e1, "series 1", "#e8681f"], [e1, m.occl2_start, "hand grip", "#16a34a"], [m.occl2_start, m.series2_start, "5-min occlusion 2", "#2a78d6"], [m.series2_start, e2, "series 2", "#e8681f"]];
+  for (const [a, b, lab, c] of phases) { if (!(b > a)) continue; el("rect", { x: P.sx(a), y: P.m.t, width: P.sx(b) - P.sx(a), height: P.H - P.m.t - P.m.b, fill: c, opacity: 0.07 }, P.g); el("text", { x: (P.sx(a) + P.sx(b)) / 2, y: P.m.t + 11, "text-anchor": "middle", "font-size": 10, fill: "#55534e" }, P.g, lab); }
+  for (const [t, code, text] of D.events) { el("line", { x1: P.sx(t), x2: P.sx(t), y1: P.m.t + 16, y2: P.H - P.m.b, stroke: "#b9b6ad", "stroke-dasharray": "3 3" }, P.g); el("text", { x: P.sx(t) + 3, y: P.m.t + 20, "font-size": 8.5, fill: "#8a877f", transform: `rotate(90 ${P.sx(t) + 3} ${P.m.t + 20})` }, P.g, `${code} ${text}`.trim()); }
+  el("line", { x1: P.m.l, x2: P.W - P.m.r, y1: P.sy(0), y2: P.sy(0), stroke: "#c3c2b7" }, P.g);
+  polyline(P, xs, yo, { stroke: "#d9453f", "stroke-width": 1.1 }); polyline(P, xs, yh, { stroke: "#2a78d6", "stroke-width": 1.1 });
+  if (interactive) for (const k of KEYS) handle(P, m[k], k.startsWith("occl") ? "#2a78d6" : "#e8681f", MARK_LABEL[k], v => { s.ov.marks = s.ov.marks || {}; s.ov.marks[k] = v; compute(s.sid); persist(); render(); }, { width: 1.5 });
+  return P.svg;
+}
+function restPlot(s, interactive) {
+  const D = s.D, r = s.res, c = r.cuff1, a = c - 10, b = c + 45;
+  const i0 = N.lowerIdx(D.t, a), i1 = N.upperIdx(D.t, b);
+  const { hc } = N.ryanRange(D, c - ST.S.refWindow, c, i0, i1);
+  const xs = Array.from(D.t.subarray(i0, i1)), ys = Array.from(hc);
+  const P = frame({ w: 520, h: 210, xlim: [a, b], ylim: extent([ys]), title: `Resting mVO₂ = ${f(r.rest, 4)} µM/s (r² ${f(r.restR2, 2)})`, xlabel: "Time (s)", ylabel: "Corr. HHb (µM)" });
+  el("rect", { x: P.sx(r.restWin[0]), y: P.m.t, width: P.sx(r.restWin[1]) - P.sx(r.restWin[0]), height: P.H - P.m.t - P.m.b, fill: "#e8681f", opacity: 0.12 }, P.g);
+  el("line", { x1: P.sx(c), x2: P.sx(c), y1: P.m.t, y2: P.H - P.m.b, stroke: "#8a877f", "stroke-dasharray": "4 3" }, P.g);
+  polyline(P, xs, ys, { stroke: "#2a78d6", "stroke-width": 1.2 });
+  const w = xs.map((x, i) => [x, ys[i]]).filter(p => p[0] >= r.restWin[0] && p[0] <= r.restWin[1]);
+  if (w.length > 2) { const L = N.linfit(w.map(p => p[0]), w.map(p => p[1])); polyline(P, [r.restWin[0], r.restWin[1]], [L.m * r.restWin[0] + L.b, L.m * r.restWin[1] + L.b], { stroke: "#e8681f", "stroke-width": 2.5 }); }
+  if (interactive) {
+    handle(P, r.restWin[0], "#e8681f", "Resting window start", v => { s.ov.rest = [v, r.restWin[1]]; compute(s.sid); persist(); render(); }, { max: r.restWin[1] - 2 });
+    handle(P, r.restWin[1], "#e8681f", "Resting window end", v => { s.ov.rest = [r.restWin[0], v]; compute(s.sid); persist(); render(); }, { min: r.restWin[0] + 2 });
+  }
+  return P.svg;
+}
+function cuffPanel(s, name, i, interactive) {
+  const D = s.D, c = s.res.series[name].occ[i];
+  const a = c.on - 1.5, b = c.off + 1.5, i0 = N.lowerIdx(D.t, a), i1 = N.upperIdx(D.t, b);
+  const { hc } = N.ryanRange(D, c.on - ST.S.refWindow, c.on, i0, i1);
+  const xs = Array.from(D.t.subarray(i0, i1)).map(x => x - c.on), ys = Array.from(hc);
+  const box = document.createElement("div"); box.className = "cuff" + (c.excluded ? " excl" : "");
+  const flags = [];
+  if (c.slope < 0) flags.push('<span class="badge bad" title="Negative slope: corrected HHb fell while the cuff was on">neg.</span>');
+  if (c.flagCurved) flags.push(`<span class="badge ed" title="A curve fits this window better than a straight line (R² gain ${f(c.curv, 2)})">curved</span>`);
+  if (c.flagShort) flags.push('<span class="badge ed" title="Slope window shorter than 2 s">short</span>');
+  if (c.edited) flags.push('<span class="badge ed">✎ edited</span>');
+  if (c.excluded) flags.push('<span class="badge ex">excluded</span>');
+  box.innerHTML = `<div class="t"><b>#${i + 1}</b><span>${f(c.slope, 3)} µM/s · r² ${f(c.r2, 2)}</span></div><div class="flags">${flags.join("")}</div>`;
+  const P = frame({ w: 220, h: 150, xlim: [-1.5, b - c.on], ylim: extent([ys], 0.1), m: { l: 36, b: 18, t: 6 }, fs: 9, nx: 4, ny: 4 });
+  el("rect", { x: P.sx(0), y: P.m.t, width: P.sx(c.off - c.on) - P.sx(0), height: P.H - P.m.t - P.m.b, fill: "#8a877f", opacity: 0.12 }, P.g);
+  el("rect", { x: P.sx(c.t0 - c.on), y: P.m.t, width: Math.max(0, P.sx(c.t1 - c.on) - P.sx(c.t0 - c.on)), height: P.H - P.m.t - P.m.b, fill: "#e8681f", opacity: 0.13 }, P.g);
+  polyline(P, xs, ys, { stroke: "#2a78d6", "stroke-width": 1.2 });
+  for (let k = 0; k < xs.length; k++) el("circle", { cx: P.sx(xs[k]), cy: P.sy(ys[k]), r: 1.3, fill: "#2a78d6" }, P.g);
+  const w = xs.map((x, k) => [x + c.on, ys[k]]).filter(p => p[0] >= c.t0 && p[0] <= c.t1);
+  if (w.length > 2) { const L = N.linfit(w.map(p => p[0]), w.map(p => p[1])); polyline(P, [c.t0 - c.on, c.t1 - c.on], [L.m * c.t0 + L.b, L.m * c.t1 + L.b], { stroke: "#e8681f", "stroke-width": 2.2 }); }
+  if (interactive) {
+    const set = (k, v) => { cuffOv(s, name, i)[k] = v; compute(s.sid); persist(); render(); };
+    const rel = (k, abs) => abs;  // values stored as absolute times
+    handle(P, 0, "#6b6860", "Cuff on (also sets the 0.2-s zero just before it)", v => set("on", c.on + v), { dash: "3 2", width: 1.5, max: c.t0 - c.on - 0.3 });
+    handle(P, c.off - c.on, "#6b6860", "Cuff off", v => set("off", c.on + v), { dash: "3 2", width: 1.5, min: c.t1 - c.on });
+    handle(P, c.t0 - c.on, "#e8681f", "Slope start", v => set("t0", c.on + v), { min: 0, max: c.t1 - c.on - 1 });
+    handle(P, c.t1 - c.on, "#e8681f", "Slope end", v => set("t1", c.on + v), { min: c.t0 - c.on + 1, max: c.off - c.on });
+  }
+  box.appendChild(P.svg);
+  if (interactive) {
+    const bar = document.createElement("div"); bar.style.cssText = "display:flex;gap:4px;margin-top:3px";
+    const ex = document.createElement("button"); ex.className = "small"; ex.textContent = c.excluded ? "Include" : "Exclude";
+    ex.onclick = () => { cuffOv(s, name, i).excluded = !c.excluded; compute(s.sid); persist(); render(); };
+    bar.appendChild(ex);
+    if (c.edited || c.excluded) { const rs = document.createElement("button"); rs.className = "small"; rs.textContent = "Reset";
+      rs.onclick = () => { delete s.ov.series[name].cuffs[i]; compute(s.sid); persist(); render(); }; bar.appendChild(rs); }
+    box.appendChild(bar);
+  }
+  return box;
+}
+function fitPlot(s, name) {
+  const r = s.res, ser = r.series[name], occ = ser.occ;
+  const ally = occ.map(c => c.slope).concat([r.rest, 0]);
+  const yl = extent([ally], 0.1); yl[1] += (yl[1] - yl[0]) * 0.35;
+  const P = frame({ w: 540, h: 290, xlim: [-2, 54], ylim: yl, title: name, xlabel: "Time since first 5-s cuff (s)", ylabel: "mVO₂ (µM/s)" });
+  el("line", { x1: P.m.l, x2: P.W - P.m.r, y1: P.sy(r.rest), y2: P.sy(r.rest), stroke: "#8a877f", "stroke-dasharray": "2 3" }, P.g);
+  el("text", { x: P.W - P.m.r - 4, y: P.sy(r.rest) - 3, "text-anchor": "end", "font-size": 9, fill: "#8a877f" }, P.g, "resting mVO₂");
+  const tt = []; for (let k = 0; k <= 200; k++) tt.push(-2 + 56 * k / 200);
+  let ly = 0;
+  for (const fn of FITS) {
+    const ft = ser.fits[fn]; if (!ft) continue;
+    polyline(P, tt, tt.map(x => N.model(Math.max(x, 0), ft.End, ft.Delta, ft.k)), { stroke: FIT_COL[fn], "stroke-width": 2, "stroke-dasharray": FIT_DASH[fn] });
+    const unres = ft.k >= ST.S.usableKHi || ft.k < ST.S.usableKLo;
+    const u = usable(s, name, fn);
+    el("text", { x: P.W - P.m.r - 4, y: P.m.t + 12 + 13 * ly++, "text-anchor": "end", "font-size": 10, fill: FIT_COL[fn] }, P.svg,
+       `${fn}: ${unres ? "k unresolved" : `k = ${f(ft.k, 1)} s, ${f(ft.rate, 2)} /min`}, R² ${f(ft.R2, 2)}${u ? " ✓" : ""}`);
+  }
+  for (const c of occ) el("circle", { cx: P.sx(c.t), cy: P.sy(c.slope), r: 5, fill: c.excluded ? "#fff" : "#1d1c1a", stroke: c.excluded ? "#8a877f" : "#fff", "stroke-width": 1.5 }, P.svg);
+  return P.svg;
+}
+function fitTable(s, name) {
+  const ser = s.res.series[name];
+  let h = `<table><tr><th>Fit</th><th>End (µM/s)</th><th>Delta</th><th>k (s)</th><th>Rate (/min)</th><th>R²</th><th>Usable</th></tr>`;
+  for (const fn of FITS) { const ft = ser.fits[fn]; if (!ft) { h += `<tr><td>${fn}</td><td colspan=6 class=muted>failed</td></tr>`; continue; }
+    const u = usable(s, name, fn); const unres = ft.k >= ST.S.usableKHi || ft.k < ST.S.usableKLo;
+    h += `<tr><td>${fn}</td><td class=num>${f(ft.End, 4)}</td><td class=num>${f(ft.Delta, 4)}</td><td class=num>${unres ? "limit/unres." : f(ft.k, 1)}</td><td class=num>${unres ? "–" : f(ft.rate, 2)}</td><td class=num>${f(ft.R2, 2)}</td><td class="${u ? "u" : "nu"}">${u ? "yes" : "no"}</td></tr>`; }
+  const why = [];
+  if (Math.min(...ser.y) < 0) why.push("a negative slope in this series");
+  if (s.exclude) why.push("subject excluded");
+  return h + `</table>` + (why.length ? `<div class="help" style="margin-top:4px">Not usable because of ${why.join(" and ")}.</div>` : "");
+}
+function renderSubject() {
+  const M = $("#main"), s = ST.subj[ST.sel];
+  if (!s) return;
+  M.innerHTML = "";
+  const top = document.createElement("div"); top.className = "card";
+  top.innerHTML = `<h2>Subject ${esc(s.sid)} <span class="muted" style="font-weight:400;font-size:12.5px">${esc(s.fileName)}</span></h2>`;
+  const row = document.createElement("div"); row.className = "row";
+  row.innerHTML = `<label class="inline"><input type="checkbox" id="exc" ${s.exclude ? "checked" : ""}> Exclude subject from group statistics</label>
+    <label>Note<input type="text" id="note" value="${esc(s.note)}"></label>
+    <button id="resetAll">Reset all edits for ${esc(s.sid)}</button>`;
+  top.appendChild(row);
+  const mk = document.createElement("div"); mk.className = "row"; mk.style.marginTop = "10px";
+  const eff = s.res ? s.res.marks : Object.assign({}, s.base || {}, (s.ov && s.ov.marks) || {});
+  for (const k of KEYS) {
+    const ed = s.ov.marks && s.ov.marks[k] != null;
+    const lab = document.createElement("label"); if (ed) lab.className = "edited";
+    lab.innerHTML = `${MARK_LABEL[k]}<input type="number" step="0.1" value="${eff[k] != null ? eff[k] : ""}"><span class="auto">${s.base ? "default " + f(s.base[k], 1) : s.guess ? "" : "no default found"}</span>`;
+    lab.querySelector("input").onchange = e => { const v = parseFloat(e.target.value); if (!isFinite(v)) return; if (!s.base) { s.base = Object.assign({ occl1_start: NaN, series1_start: NaN, occl2_start: NaN, series2_start: NaN }, s.base); s.base[k] = v; if (KEYS.every(q => isFinite(s.base[q]))) compute(s.sid); } else { s.ov.marks = s.ov.marks || {}; s.ov.marks[k] = v; compute(s.sid); } persist(); render(); };
+    mk.appendChild(lab);
+  }
+  top.appendChild(mk);
+  top.insertAdjacentHTML("beforeend", `<div class="help" style="margin-top:6px">Defaults come from the protocol CSV if loaded, otherwise from the event markers. Drag the marker lines on the graph, or type a time; edited values are highlighted. Default values are always used unless you change them.</div>`);
+  M.appendChild(top);
+  $("#exc").onchange = e => { s.exclude = e.target.checked; persist(); render(); };
+  $("#note").onchange = e => { s.note = e.target.value; persist(); };
+  $("#resetAll").onclick = () => { if (confirm(`Remove all manual edits for subject ${s.sid}?`)) { s.ov = {}; compute(s.sid); persist(); render(); } };
+  if (!s.res) { const c = document.createElement("div"); c.className = "card"; c.textContent = s.err || ""; M.appendChild(c); return; }
+  const ov = document.createElement("div"); ov.className = "card";
+  ov.innerHTML = `<h2>Ryan-corrected O₂Hb and HHb</h2><div class="legend"><span><i class="sw" style="background:#d9453f"></i>O₂Hb</span><span><i class="sw" style="background:#2a78d6"></i>HHb</span><span>Zero = 10 s of rest before the first long cuff. Blue/orange handles = protocol markers (drag to move).</span></div>`;
+  ov.appendChild(overviewPlot(s, true)); M.appendChild(ov);
+  const rc = document.createElement("div"); rc.className = "card";
+  rc.innerHTML = `<h2>Resting mVO₂ (End for the 1- and 2-parameter fits)</h2><div class="help">Slope of corrected HHb in the orange window (default ${ST.S.restStart}–${ST.S.restEnd} s after the first long cuff goes on, at ${f(s.res.cuff1, 1)} s). Drag the orange handles to change it.${s.ov.rest ? ' <button class="small" id="rstRest">Reset window</button>' : ""}</div>`;
+  const rw = document.createElement("div"); rw.style.maxWidth = "560px"; rw.appendChild(restPlot(s, true)); rc.appendChild(rw); M.appendChild(rc);
+  if (s.ov.rest) $("#rstRest").onclick = () => { delete s.ov.rest; compute(s.sid); persist(); render(); };
+  for (const name of SERIES) {
+    const card = document.createElement("div"); card.className = "card";
+    const ser = s.res.series[name];
+    card.innerHTML = `<h2>${name}: the six 5-s cuffs</h2><div class="help">Grey = cuff on (dashed handles move the on/off edges); orange = slope window (orange handles move its ends). mVO₂ = slope of the orange line. Grid offset from marker: ${ser.shift >= 0 ? "+" : ""}${f(ser.shift, 1)} s.</div>`;
+    const g = document.createElement("div"); g.className = "grid6"; g.style.marginTop = "6px";
+    ser.occ.forEach((c, i) => g.appendChild(cuffPanel(s, name, i, true)));
+    card.appendChild(g); M.appendChild(card);
+  }
+  const fc = document.createElement("div"); fc.className = "card";
+  fc.innerHTML = `<h2>Exponential fits: y(t) = End − Delta·e<sup>−t/k</sup>, rate = 60/k</h2><div class="legend"><span><i class="sw" style="background:${FIT_COL["1-param"]}"></i>1-param (End = rest, Delta from first point)</span><span><i class="sw" style="background:${FIT_COL["2-param"]}"></i>2-param (End = rest)</span><span><i class="sw" style="background:${FIT_COL["3-param"]}"></i>3-param (all free)</span><span>○ = excluded cuff</span></div>`;
+  const g2 = document.createElement("div"); g2.className = "grid2";
+  for (const name of SERIES) { const d = document.createElement("div"); d.appendChild(fitPlot(s, name)); d.insertAdjacentHTML("beforeend", fitTable(s, name)); g2.appendChild(d); }
+  fc.appendChild(g2); M.appendChild(fc);
+}
+
+// ------------------------------------------------------------ group summary
+function groupStats() {
+  const out = [];
+  for (const name of SERIES) for (const fn of FITS) {
+    const ids = [], v = [];
+    for (const sid of ST.order) { const s = ST.subj[sid]; if (!s.res || !s.res.series[name].fits[fn]) continue; if (usable(s, name, fn)) { ids.push(sid); v.push(s.res.series[name].fits[fn].rate); } }
+    const n = v.length, mean = n ? v.reduce((a, b) => a + b) / n : NaN;
+    const sd = n > 1 ? Math.sqrt(v.reduce((a, b) => a + (b - mean) ** 2, 0) / (n - 1)) : NaN;
+    const so = [...v].sort((a, b) => a - b), med = n ? (n % 2 ? so[(n - 1) / 2] : (so[n / 2 - 1] + so[n / 2]) / 2) : NaN;
+    out.push({ name, fn, n, mean, sd, med, min: so[0], max: so[n - 1], ids });
+  }
+  return out;
+}
+function summaryHTML() {
+  let h = `<table><tr><th>Subject</th><th>Rest (µM/s)</th>`;
+  for (const name of SERIES) for (const fn of FITS) h += `<th>${name.startsWith("Series 1") ? "S1" : "S2"} ${fn}<br><span class=muted>rate (R²)</span></th>`;
+  h += `<th>Edits</th><th>Note</th></tr>`;
+  for (const sid of ST.order) {
+    const s = ST.subj[sid];
+    if (!s.res) { h += `<tr><td>${esc(sid)}</td><td colspan=9 class=muted>${esc(s.err || "")}</td></tr>`; continue; }
+    h += `<tr><td>${esc(sid)}${s.exclude ? ' <span class="badge ex">excl.</span>' : ""}</td><td class=num>${f(s.res.rest, 4)}</td>`;
+    for (const name of SERIES) for (const fn of FITS) { const ft = s.res.series[name].fits[fn]; const u = ft && usable(s, name, fn); const unres = !ft || ft.k >= ST.S.usableKHi || ft.k < ST.S.usableKLo;
+      h += `<td class="num ${u ? "u" : "nu"}">${unres ? "–" : f(ft.rate, 2)} <span class=muted>(${ft ? f(ft.R2, 2) : "–"})</span></td>`; }
+    h += `<td class=num>${editsCount(s) || ""}</td><td>${esc(s.note)}</td></tr>`;
+  }
+  h += `</table><p class="help">Green = usable (k between ${ST.S.usableKLo} and ${ST.S.usableKHi} s, R² ≥ ${ST.S.usableR2}, no negative slope among the included cuffs, subject not excluded). “–” = k unresolved. Rates in 1/min.</p>`;
+  h += `<h3>Group statistics (usable fits only)</h3><table><tr><th>Series</th><th>Fit</th><th>n</th><th>Mean ± SD (/min)</th><th>Median</th><th>Range</th><th>Subjects</th></tr>`;
+  for (const g of groupStats()) h += `<tr><td>${g.name}</td><td>${g.fn}</td><td class=num>${g.n}</td><td class=num>${g.n > 1 ? f(g.mean, 2) + " ± " + f(g.sd, 2) : g.n ? f(g.mean, 2) : "–"}</td><td class=num>${f(g.med, 2)}</td><td class=num>${g.n ? f(g.min, 2) + "–" + f(g.max, 2) : "–"}</td><td>${g.ids.join(", ") || "none"}</td></tr>`;
+  return h + `</table>`;
+}
+function renderGroup() {
+  const M = $("#main");
+  M.innerHTML = `<div class="card"><h2>Group summary</h2>${summaryHTML()}</div>`;
+}
+
+// ------------------------------------------------------------ settings, start screen
+function renderSettings() {
+  const fields = [["slopeStart", "Slope start after cuff-on (s)"], ["slopeTrim", "Slope end before cuff-off (s)"], ["refWindow", "Correction zero: seconds before cuff-on"], ["restStart", "Rest window start after first long cuff (s)"], ["restEnd", "Rest window end (s)"], ["usableKLo", "Usable k minimum (s)"], ["usableKHi", "Usable k maximum (s)"], ["usableR2", "Usable R² minimum"], ["curvatureFlag", "Flag ‘curved’ if quadratic R² gain exceeds"], ["shiftLo", "Cuff grid search from (s)"], ["shiftHi", "Cuff grid search to (s)"]];
+  const c = document.createElement("div"); c.className = "card";
+  c.innerHTML = `<h2>Settings <span class="muted" style="font-weight:400;font-size:12px">(defaults match nirs_mvo2.py)</span></h2><div class="row">${fields.map(([k, l]) => `<label>${l}<input type="number" step="0.05" data-k="${k}" value="${ST.S[k]}"><span class="auto">default ${N.DEFAULTS[k]}</span></label>`).join("")}</div>
+  <div style="margin-top:8px;display:flex;gap:8px"><button class="primary" id="applySet">Apply and recompute all</button><button id="defSet">Restore defaults</button></div>
+  <p class="help">Rx1–Tx3 O₂Hb and HHb are read from OxySoft columns ${ST.S.o2Col} and ${ST.S.hhbCol}.</p>`;
+  c.querySelector("#applySet").onclick = () => { c.querySelectorAll("input[data-k]").forEach(i => { const v = parseFloat(i.value); if (isFinite(v)) ST.S[i.dataset.k] = v; }); recomputeAll(); };
+  c.querySelector("#defSet").onclick = () => { ST.S = Object.assign({}, N.DEFAULTS); recomputeAll(); };
+  return c;
+}
+function renderStart() {
+  $("#main").innerHTML = `<div class="drop" id="drop"><h2 style="margin-top:0">Drop OxySoft .xlsx exports here</h2>
+  <p>or use <b>Add .xlsx files</b> above. Everything runs in your browser; no data leaves your computer.</p>
+  <p class="help">Each file name should contain “subject” and the ID (e.g. subject0103.xlsx). Protocol times are guessed from the event markers; load your <b>protocol.csv</b> to use your own. Edits are remembered in this browser, and <b>Save session</b> stores them in a file.</p></div>`;
+}
+function render() {
+  renderList();
+  const M = $("#main");
+  if (!ST.order.length) { renderStart(); if (ST.showSettings) M.prepend(renderSettings()); return; }
+  if (ST.tab === "group") renderGroup(); else renderSubject();
+  if (ST.showSettings) M.prepend(renderSettings());
+}
+
+// ------------------------------------------------------------ exports
+function download(name, text, type) { const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([text], { type: type || "text/csv" })); a.download = name; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500); }
+function csvLine(a) { return a.map(v => { const s = String(v == null ? "" : v); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; }).join(","); }
+function exportCSVs() {
+  const sl = [["subject", "series", "cuff", "on_s", "off_s", "slope_start_s", "slope_end_s", "mVO2_uM_per_s", "r2", "excluded_cuff", "edited", "curvature_gain"]];
+  const ft = [["subject", "excluded_subject", "series", "fit", "End", "Delta", "k_s", "rate_per_min", "R2", "n_points", "usable", "edits_in_subject"]];
+  for (const sid of ST.order) { const s = ST.subj[sid]; if (!s.res) continue;
+    for (const name of SERIES) { const ser = s.res.series[name];
+      ser.occ.forEach((c, i) => sl.push([sid, name, i + 1, f(c.on, 1), f(c.off, 1), f(c.t0, 1), f(c.t1, 1), f(c.slope, 5), f(c.r2, 3), c.excluded, c.edited, f(c.curv, 3)]));
+      for (const fn of FITS) { const x = ser.fits[fn]; if (!x) continue; ft.push([sid, s.exclude, name, fn, f(x.End, 5), f(x.Delta, 5), f(x.k, 2), f(x.rate, 3), f(x.R2, 3), ser.y.length, usable(s, name, fn), editsCount(s)]); } } }
+  download("slopes.csv", sl.map(csvLine).join("\n"));
+  setTimeout(() => download("fits.csv", ft.map(csvLine).join("\n")), 400);
+  const gs = [["series", "fit", "n", "mean_per_min", "sd", "median", "min", "max", "subjects"]];
+  for (const g of groupStats()) gs.push([g.name, g.fn, g.n, f(g.mean, 3), f(g.sd, 3), f(g.med, 3), f(g.min, 3), f(g.max, 3), g.ids.join(" ")]);
+  setTimeout(() => download("group_summary.csv", gs.map(csvLine).join("\n")), 800);
+}
+function buildPrint() {
+  const P = $("#print"); P.innerHTML = "";
+  const p1 = document.createElement("div"); p1.className = "pg";
+  p1.innerHTML = `<h2>NIRS mVO₂ recovery analysis</h2><p class="help">${ST.order.length} subjects · Ryan |β| correction · slope window ${ST.S.slopeStart} s after cuff-on to ${ST.S.slopeTrim} s before cuff-off · printed ${new Date().toLocaleString()}</p>${summaryHTML()}`;
+  P.appendChild(p1);
+  for (const sid of ST.order) {
+    const s = ST.subj[sid]; if (!s.res) continue;
+    const pg = document.createElement("div"); pg.className = "pg";
+    pg.innerHTML = `<h2>Subject ${esc(sid)}${s.exclude ? " (excluded)" : ""}${editsCount(s) ? ` · ${editsCount(s)} manual edit(s)` : ""} ${s.note ? "· " + esc(s.note) : ""}</h2>`;
+    pg.appendChild(overviewPlot(s, false));
+    const g2 = document.createElement("div"); g2.className = "grid2";
+    for (const name of SERIES) { const d = document.createElement("div"); d.appendChild(fitPlot(s, name)); g2.appendChild(d); }
+    pg.appendChild(g2); P.appendChild(pg);
+    const pg2 = document.createElement("div"); pg2.className = "pg";
+    pg2.innerHTML = `<h2>Subject ${esc(sid)}: 5-s cuffs</h2>`;
+    for (const name of SERIES) { const h = document.createElement("div"); h.className = "help"; h.textContent = name; pg2.appendChild(h); const g = document.createElement("div"); g.className = "grid6"; s.res.series[name].occ.forEach((c, i) => g.appendChild(cuffPanel(s, name, i, false))); pg2.appendChild(g); }
+    const rw = document.createElement("div"); rw.style.maxWidth = "520px"; rw.appendChild(restPlot(s, false)); pg2.appendChild(rw);
+    P.appendChild(pg2);
+  }
+}
+
+// ------------------------------------------------------------ wiring
+$("#fileIn").onchange = e => { addFiles(e.target.files); e.target.value = ""; };
+$("#protIn").onchange = async e => { const fl = e.target.files[0]; if (fl) loadProtocol(await fl.text()); e.target.value = ""; };
+$("#sessIn").onchange = async e => { const fl = e.target.files[0]; if (!fl) return; try { applySession(JSON.parse(await fl.text())); recomputeAll(); status("Session loaded"); } catch (err) { alert("Could not read session file: " + err.message); } e.target.value = ""; };
+$("#saveSess").onclick = () => download("nirs_mvo2_session.json", JSON.stringify(snapshot(), null, 1), "application/json");
+$("#expCsv").onclick = () => { if (ST.order.length) exportCSVs(); };
+$("#printBtn").onclick = () => { if (!ST.order.length) return; buildPrint(); setTimeout(() => window.print(), 100); };
+$("#setBtn").onclick = () => { ST.showSettings = !ST.showSettings; render(); };
+document.addEventListener("dragover", e => { e.preventDefault(); const d = $("#drop"); if (d) d.classList.add("hover"); });
+document.addEventListener("dragleave", () => { const d = $("#drop"); if (d) d.classList.remove("hover"); });
+document.addEventListener("drop", e => { e.preventDefault(); const fl = [...e.dataTransfer.files]; const csv = fl.find(x => /\.csv$/i.test(x.name)); if (csv) csv.text().then(loadProtocol); addFiles(fl); });
+window.__ST = ST; window.__addFiles = addFiles; window.__loadProtocol = loadProtocol;
+render();
+})();
+
+</script>
+</body>
+</html>
